@@ -6,78 +6,155 @@ const TYPES={income:['💰','إيراد'],expense:['💸','مصروف'],sale:['�
 const SECT={home:'🏡 البيت',invest:'📦 الاستثمار'};
 const CATS={
   home:{income:['راتب','مساعدة','عمل','دخل آخر']},
-  invest:{income:['دخل آخر']}
+  invest:{income:['رأس مال جديد','قرض أو دين','دخل آخر']}
 };
+const UNITS=['كيلو','غرام','لتر','قطعة','علبة','كيس'];
 const accName=id=>(DB.s.accounts.find(a=>a.id===id)||{}).name||'—';
 const prodName=id=>(DB.s.products.find(p=>p.id===id)||{}).name||'منتج محذوف';
 const opts=(arr,sel)=>arr.map(([v,l])=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(l)}</option>`).join('');
 const accOpts=()=>opts(DB.s.accounts.map(a=>[a.id,a.name]));
 const itemList=()=>[...new Set(DB.s.tx.filter(t=>t.type==='expense').map(t=>t.category))].map(c=>`<option value="${esc(c)}">`).join('');
+const stockBroken=()=>DB.s.products.some(p=>E.stock(p.id)<-1e-9);
+
+/* آخر سعر وحدة دُفع لهذا الصنف (وبنفس الوحدة إذا انحددت) */
+function lastUnitPrice(item,unit){
+  const l=DB.s.tx.filter(t=>t.type==='expense'&&t.category===item&&t.unitPrice&&t.id!==editId&&(!unit||t.eunit===unit))
+    .sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+  return l[0]||null;
+}
+
+function toast(m,err){
+  let el=$('#toast');
+  if(!el){el=document.createElement('div');el.id='toast';document.body.appendChild(el)}
+  el.textContent=m;el.className='show'+(err?' err':'');
+  clearTimeout(el._t);el._t=setTimeout(()=>el.className='',2600);
+}
 
 function txList(list,n=10){
   const rows=[...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id)).slice(0,n);
   if(!rows.length)return '<div class="list"><div class="empty">ما في عمليات بعد. اضغط ＋ لإضافة أول عملية.</div></div>';
   return '<div class="list">'+rows.map(t=>{
+    const qt=t.eqty?`${t.eqty} ${t.eunit||''}`.trim():(t.qtyText||'');
     const lbl=t.type==='sale'||t.type==='purchase'?`${TYPES[t.type][1]} ${prodName(t.productId)} × ${t.qty}`
       :t.type==='transfer'?`${SECT[t.sector]} ← ${SECT[t.toSector]}`
-      :t.type==='expense'?`${t.category}${t.qtyText?' · '+t.qtyText:''}`:t.category;
+      :t.type==='expense'?`${t.category}${qt?' · '+qt:''}`:t.category;
     let meta=t.type==='transfer'?`${accName(t.account)} ← ${accName(t.toAccount)}`:`${SECT[t.sector]} · ${accName(t.account)}`;
     if(t.type==='sale')meta+=` · ربح ${fmt(t.amount-(t.cogs||0))}`;
+    if(t.type==='expense'&&t.unitPrice&&t.eunit)meta+=` · ${fmt(t.unitPrice)}/${t.eunit}`;
     const sg=t.type==='transfer'?'':E.sign(t)>0?'+':'-';
     const cl=t.type==='transfer'?'':E.sign(t)>0?'pos':'neg';
-    return `<div class="row-i"><span class="ic">${TYPES[t.type][0]}</span><div class="mid">${esc(lbl)}<span>${esc(meta)} · ${t.date}</span></div><b class="${cl}">${sg}${fmt(t.amount)}</b><button class="del" data-del="${t.id}" aria-label="حذف">✕</button></div>`;
+    return `<div class="row-i" data-edit="${t.id}"><span class="ic">${TYPES[t.type][0]}</span><div class="mid">${esc(lbl)}<span>${esc(meta)} · ${t.date}</span></div><b class="${cl}">${sg}${fmt(t.amount)}</b><span class="chev">‹</span></div>`;
   }).join('')+'</div>';
 }
 
-/* ===== نافذة الإضافة ===== */
-let cur='income';
-function openSheet(){cur='income';$('#sheet').classList.add('open');drawForm()}
-function closeSheet(){$('#sheet').classList.remove('open')}
+/* ===== نافذة الإضافة / التعديل ===== */
+let cur='income',editId=null,prodId=null;
+const setTitle=s=>{$('.bar h3').textContent=s};
+function showSheet(){$('#sheet').classList.add('open');document.body.style.overflow='hidden'}
+function openSheet(){editId=null;prodId=null;cur='income';setTitle('عملية جديدة');showSheet();drawForm()}
+function openEdit(id){
+  const t=DB.s.tx.find(x=>x.id===id);if(!t)return;
+  editId=id;prodId=null;cur=t.type;setTitle('تعديل عملية');showSheet();drawForm();fillEdit(t);
+}
+function openProduct(id){editId=null;prodId=id;cur='product';setTitle('تعديل منتج');showSheet();drawForm()}
+function closeSheet(){$('#sheet').classList.remove('open');document.body.style.overflow='';editId=null;prodId=null}
+
+/* اختيار الوحدة بالأزرار */
+function setUnit(u,manual){
+  const f=$('#form');if(!f.elements.eunit)return;
+  const known=UNITS.includes(u),other=!!u&&!known;
+  f.elements.eunit.value=u||'';
+  document.querySelectorAll('#units .u').forEach(b=>{
+    const k=b.dataset.unit;
+    b.classList.toggle('on',k===u||(k==='__other'&&other));
+  });
+  const eo=f.elements.eother;
+  eo.style.display=other?'block':'none';
+  if(other)eo.value=u;
+  if(manual)f.dataset.touched='1';
+}
 
 function drawForm(){
-  const t=cur,prods=DB.s.products.map(p=>[p.id,p.name]);
-  let h=`<div class="chips">${Object.entries(TYPES).map(([k,[i,l]])=>`<button type="button" class="chip${k===t?' on':''}" data-type="${k}">${i} ${l}</button>`).join('')}</div>`;
+  const t=cur;
+  if(t==='product'){
+    const p=DB.s.products.find(x=>x.id===prodId);
+    $('#form').innerHTML=`<label>اسم المنتج<input name="pname" value="${esc(p.name)}"></label>
+    <div class="row"><label>سعر التكلفة<input name="cost" type="number" step="any" inputmode="decimal" value="${p.cost}"></label><label>سعر البيع<input name="price" type="number" step="any" inputmode="decimal" value="${p.price}"></label></div>
+    <div class="row"><label>رصيد افتتاحي<input name="qty0" type="number" step="any" inputmode="decimal" value="${p.qty0||0}"></label><label>الحد الأدنى<input name="min" type="number" step="any" inputmode="decimal" value="${p.min||0}"></label></div>
+    <div class="sumbox"><div class="stat"><span>المتوفر حالياً</span><b>${E.stock(p.id)}</b></div><div class="note">تغيير السعر لا يغيّر أرباح المبيعات السابقة.</div></div>
+    <div class="savebar"><button class="btn">حفظ</button><button type="button" class="btn alt" style="color:var(--danger);margin-top:8px" data-delprod>حذف المنتج</button></div>`;
+    return;
+  }
+  const prods=DB.s.products.map(p=>[p.id,p.name]);
+  let h=editId?'':`<div class="chips">${Object.entries(TYPES).map(([k,[i,l]])=>`<button type="button" class="chip${k===t?' on':''}" data-type="${k}"><span>${i}</span>${l}</button>`).join('')}</div>`;
   if(t==='income'||t==='expense'){
     h+=`<label>القسم<select name="sector">${opts([['home',SECT.home],['invest',SECT.invest]])}</select></label>`;
     if(t==='income'){
       h+=`<label>مصدر الدخل<select name="category"></select></label>
-      <label>المبلغ<input name="amount" type="number" step="any" min="0" inputmode="decimal"></label>`;
+      <label>المبلغ<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="المبلغ"></label>`;
     }else{
       h+=`<label>الصنف<input name="category" list="items" placeholder="مثال: بطاطا" autocomplete="off"><datalist id="items">${itemList()}</datalist></label>
-      <div class="row"><label>الكمية<input name="qtyText" placeholder="مثال: 2 كيلو" autocomplete="off"></label><label>السعر<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="10"></label></div>`;
+      <label>الكمية (اختياري)<input name="eqty" type="number" step="any" min="0" inputmode="decimal" placeholder="مثال: 5"></label>
+      <div class="lbl">الوحدة</div>
+      <div class="units" id="units">${UNITS.map(u=>`<button type="button" class="u" data-unit="${u}">${u}</button>`).join('')}<button type="button" class="u" data-unit="__other">أخرى</button></div>
+      <input type="hidden" name="eunit">
+      <input name="eother" placeholder="اكتب الوحدة" style="display:none;margin-top:-4px;margin-bottom:12px" autocomplete="off">
+      <label>السعر الإجمالي<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="المبلغ الذي دفعته"></label>
+      <div class="total" id="uprice"></div>`;
     }
     h+=`<label>${t==='income'?'الحساب الذي دخلت إليه':'الحساب الذي دُفع منه'}<select name="account">${accOpts()}</select></label>`;
   }else if(t==='sale'){
-    h+=`<label>المنتج<select name="product">${opts(prods)}<option value="__new">＋ منتج جديد</option></select></label>
-    <label id="newp" style="display:none">اسم المنتج الجديد<input name="newname"></label>
-    <div class="row"><label>الكمية<input name="qty" type="number" step="any" value="1" min="0"></label><label>سعر البيع (للوحدة)<input name="unit" type="number" step="any" min="0"></label></div>
-    <div class="card" style="margin-bottom:12px">
-      <div class="stat" style="padding:4px 0;border:0"><span>الإجمالي</span><b id="tot">0 ₪</b></div>
-      <div class="stat" style="padding:4px 0;border:0"><span>تكلفة الوحدة</span><b id="cst">—</b></div>
-      <div class="stat" style="padding:4px 0;border:0"><span>الربح</span><b id="prf">—</b></div>
-      <div id="stk" style="font-size:12px;color:var(--t2);margin-top:4px"></div>
+    h+=`<label>المنتج<select name="product">${opts(prods)}</select></label>
+    <div class="row"><label>الكمية<input name="qty" type="number" step="any" value="1" min="0" inputmode="decimal"></label><label>سعر البيع (للوحدة)<input name="unit" type="number" step="any" min="0" inputmode="decimal" placeholder="السعر"></label></div>
+    <div class="sumbox">
+      <div class="stat"><span>الإجمالي</span><b id="tot">0 ₪</b></div>
+      <div class="stat"><span>تكلفة الوحدة</span><b id="cst">—</b></div>
+      <div class="stat"><span>الربح</span><b id="prf">—</b></div>
+      <div class="note" id="stk"></div>
     </div>
     <label>الحساب الذي استلم المال<select name="account">${accOpts()}</select></label>`;
   }else if(t==='purchase'){
     h+=`<label>المنتج<select name="product">${opts(prods)}<option value="__new">＋ منتج جديد</option></select></label>
     <label id="newp" style="display:none">اسم المنتج الجديد<input name="newname"></label>
-    <div class="row"><label>الكمية<input name="qty" type="number" step="any" min="0" inputmode="decimal" placeholder="160"></label><label>المبلغ المدفوع<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="135"></label></div>
-    <div class="total">تكلفة الوحدة: <b id="tot">—</b><span id="stk"></span></div>
+    <div class="row"><label>الكمية<input name="qty" type="number" step="any" min="0" inputmode="decimal" placeholder="الكمية"></label><label>المبلغ المدفوع<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="الإجمالي"></label></div>
+    <div class="total">تكلفة الوحدة: <b id="tot">—</b></div>
     <label>الحساب الذي دُفع منه<select name="account">${accOpts()}</select></label>`;
   }else{
     h+=`<div class="row"><label>من قسم<select name="sector">${opts([['home',SECT.home],['invest',SECT.invest]])}</select></label><label>إلى قسم<select name="toSector">${opts([['invest',SECT.invest],['home',SECT.home]])}</select></label></div>
     <div class="row"><label>من حساب<select name="account">${accOpts()}</select></label><label>إلى حساب<select name="toAccount">${accOpts()}</select></label></div>
-    <label>المبلغ<input name="amount" type="number" step="any" min="0" inputmode="decimal"></label>`;
+    <label>المبلغ<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="المبلغ"></label>`;
   }
-  h+=`<div id="dt" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:13px;color:var(--t2)"><span>📅 التاريخ: اليوم</span><button type="button" data-date style="background:none;border:0;color:var(--info);font:inherit;font-size:13px;padding:4px">تغيير</button></div>
+  h+=`<div class="daterow" id="dt"><span>📅 التاريخ: اليوم</span><button type="button" class="link" data-date>تغيير</button></div>
   <label id="datel" style="display:none">التاريخ<input type="date" name="date" value="${today()}"></label>
-  <label>ملاحظة<input name="note"></label><button class="btn">حفظ</button>`;
+  <label>ملاحظة<input name="note" placeholder="اختياري"></label>
+  <div class="savebar"><button class="btn">حفظ</button>${editId?'<button type="button" class="btn alt" style="color:var(--danger);margin-top:8px" data-deltx>حذف العملية</button>':''}</div>`;
   $('#form').innerHTML=h;
-  if(cur==='sale')fillPrice();
+  $('#form').dataset.touched='';
+  if(cur==='sale'&&!editId)fillPrice();
   sync();
 }
 
-/* يعبّي سعر البيع الأخير للمنتج تلقائياً */
+function fillEdit(t){
+  const f=$('#form');
+  const set=(n,v)=>{
+    const el=f.elements[n];if(!el||v===undefined||v===null)return;
+    if(el.tagName==='SELECT'&&![...el.options].some(o=>o.value===String(v)))el.add(new Option(v,v));
+    el.value=v;
+  };
+  set('sector',t.sector);sync();
+  set('category',t.category);
+  if(t.type!=='sale')set('amount',t.amount);
+  set('eqty',t.eqty);
+  if(t.type==='expense'){f.dataset.touched='1';setUnit(t.eunit||'')}
+  set('account',t.account);set('toSector',t.toSector);set('toAccount',t.toAccount);
+  set('product',t.productId);set('qty',t.qty);
+  if(t.type==='sale')set('unit',t.unit);
+  set('note',t.note);set('date',t.date);
+  $('#dt').style.display='none';$('#datel').style.display='block';
+  sync();
+}
+
+/* يعبّي آخر سعر بيع للمنتج تلقائياً */
 function fillPrice(){
   const f=$('#form'),p=DB.s.products.find(x=>x.id===f.elements.product.value);
   f.elements.unit.value=p&&p.price>0?p.price:'';
@@ -85,12 +162,37 @@ function fillPrice(){
 
 function sync(){
   const f=$('#form'),g=n=>f.elements[n];
-  if(g('category')&&g('category').tagName==='SELECT'&&g('sector'))g('category').innerHTML=opts((CATS[g('sector').value][cur]||[]).map(c=>[c,c]));
+  if(!f.elements.length)return;
+  const c=g('category');
+  /* نعيد بناء مصادر الدخل فقط لما يتغير القسم، حتى ما يضيع اختيار المستخدم */
+  if(c&&c.tagName==='SELECT'&&g('sector')){
+    const sec=g('sector').value;
+    if(c.dataset.sec!==sec){
+      c.innerHTML=opts((CATS[sec][cur]||[]).map(x=>[x,x]));
+      c.dataset.sec=sec;
+    }
+  }
+  /* سعر الوحدة للمصروف + آخر سعر للصنف */
+  if(cur==='expense'&&g('eqty')){
+    if(g('eother').style.display!=='none')g('eunit').value=g('eother').value.trim();
+    const item=g('category').value.trim();
+    /* اختيار الوحدة تلقائياً من آخر مرة اشتريت فيها الصنف */
+    if(!g('eunit').value&&!f.dataset.touched&&item){
+      const la=lastUnitPrice(item,'');
+      if(la&&la.eunit)setUnit(la.eunit);
+    }
+    const q=+g('eqty').value,a=+g('amount').value,u=g('eunit').value.trim();
+    const parts=[];
+    if(q>0&&a>0)parts.push(`سعر ${u||'الوحدة'}: <b>${fmt(a/q)}</b>`);
+    const last=item?lastUnitPrice(item,u):null;
+    if(last)parts.push(`آخر مرة: ${fmt(last.unitPrice)}${last.eunit?' / '+esc(last.eunit):''} (${last.date})`);
+    $('#uprice').innerHTML=parts.join('<br>');
+  }
   const p=g('product')?DB.s.products.find(x=>x.id===g('product').value):null;
   if(cur==='sale'&&g('qty')&&g('unit')){
     const q=+g('qty').value||0,u=+g('unit').value||0,cost=p?p.cost:0,profit=(u-cost)*q;
     $('#tot').textContent=fmt(q*u);
-    $('#cst').textContent=p?fmt(cost):'منتج جديد (بدون تكلفة)';
+    $('#cst').textContent=p?fmt(cost):'—';
     const pr=$('#prf');
     if(q>0&&u>0){pr.textContent=(profit>=0?'+':'')+fmt(profit);pr.className=profit>=0?'pos':'neg'}
     else{pr.textContent='—';pr.className=''}
@@ -100,58 +202,116 @@ function sync(){
     $('#tot').textContent=q>0&&a>0?fmt(a/q):'—';
   }
   if(g('product')){
-    $('#newp').style.display=g('product').value==='__new'?'block':'none';
-    $('#stk').textContent=p&&cur==='sale'?`المتوفر في المخزون: ${E.stock(p.id)}`:'';
+    const np=$('#newp');if(np)np.style.display=g('product').value==='__new'?'block':'none';
+    const s=$('#stk');if(s)s.textContent=p&&cur==='sale'?`المتوفر في المخزون: ${E.stock(p.id)}`:'';
   }
 }
 
 function submitForm(e){
   e.preventDefault();
+  if(cur==='product')return saveProduct();
   const f=$('#form'),v=n=>f.elements[n]?f.elements[n].value:'';
   const t={type:cur,date:v('date')||today(),note:v('note'),account:v('account')};
   const qty=+v('qty'),unit=+v('unit');
+  const old=editId?DB.s.tx.find(x=>x.id===editId):null;
+  let newPid=null,pid=null,p=null;
+
   if(cur==='income'){t.sector=v('sector');t.category=v('category');t.amount=+v('amount')}
   else if(cur==='expense'){
-    const item=v('category').trim();if(!item)return alert('اكتب اسم الصنف');
-    t.sector=v('sector');t.category=item;t.qtyText=v('qtyText').trim();t.amount=+v('amount');
+    const item=v('category').trim();if(!item)return toast('اكتب اسم الصنف',1);
+    t.sector=v('sector');t.category=item;t.amount=+v('amount');
+    const eq=+v('eqty'),eu=v('eunit').trim();
+    if(eq>0){
+      t.eqty=eq;t.eunit=eu;t.unitPrice=t.amount/eq;t.qtyText=`${eq} ${eu}`.trim();
+    }else if(old&&old.qtyText&&!old.eqty)t.qtyText=old.qtyText;
   }
   else if(cur==='transfer'){
     t.sector=v('sector');t.toSector=v('toSector');t.toAccount=v('toAccount');t.amount=+v('amount');
-    if(t.sector===t.toSector&&t.account===t.toAccount)return alert('اختر قسمين أو حسابين مختلفين');
+    if(t.sector===t.toSector&&t.account===t.toAccount)return toast('اختر قسمين أو حسابين مختلفين',1);
   }else{
     t.sector='invest';t.qty=qty;
     if(cur==='sale'){t.unit=unit;t.amount=qty*unit}
     else{t.amount=+v('amount');t.unit=qty>0?t.amount/qty:0}
-    if(!(qty>0&&t.amount>0))return alert('أدخل الكمية والسعر');
-    let pid=v('product');
+    if(!(qty>0&&t.amount>0))return toast('أدخل الكمية والسعر',1);
+    pid=v('product');
     if(pid==='__new'){
-      const name=v('newname').trim();if(!name)return alert('اكتب اسم المنتج');
-      pid=DB.add('products',{name,cost:cur==='purchase'?t.unit:0,price:cur==='sale'?unit:0,qty0:0,min:0}).id;
+      const name=v('newname').trim();if(!name)return toast('اكتب اسم المنتج',1);
+      pid=newPid=DB.add('products',{name,cost:t.unit,price:0,qty0:0,min:0}).id;
     }
-    if(!pid)return alert('اختر منتجاً');
-    const p=DB.s.products.find(x=>x.id===pid);t.productId=pid;
-    if(cur==='sale'){
-      if(qty>E.stock(pid))return alert('الكمية أكبر من المخزون المتوفر');
-      t.cogs=p.cost*qty;p.price=unit;
-    }else p.cost=t.unit;
+    if(!pid)return toast('اختر منتجاً',1);
+    p=DB.s.products.find(x=>x.id===pid);t.productId=pid;
+    if(cur==='sale')t.cogs=old&&old.type==='sale'&&old.productId===pid&&old.qty>0?old.cogs/old.qty*qty:p.cost*qty;
   }
-  if(!(t.amount>0))return alert('أدخل مبلغاً أكبر من صفر');
-  DB.add('tx',t);closeSheet();R.render();
+  if(!(t.amount>0)){if(newPid)DB.del('products',newPid);return toast('أدخل مبلغاً أكبر من صفر',1)}
+
+  /* نطبّق التغيير ثم نتأكد إن المخزون ما صار سالب، وإلا نتراجع */
+  const snap=old?JSON.parse(JSON.stringify(old)):null;
+  let idx=-1;
+  if(editId){idx=DB.s.tx.findIndex(x=>x.id===editId);t.id=editId;DB.s.tx[idx]=t}
+  else{t.id=DB.id();DB.s.tx.push(t)}
+  if(stockBroken()){
+    if(editId)DB.s.tx[idx]=snap;else DB.s.tx.pop();
+    if(newPid)DB.del('products',newPid);
+    return toast('الكمية أكبر من المخزون المتوفر',1);
+  }
+  if(p&&cur==='purchase')p.cost=t.unit;
+  if(p&&cur==='sale')p.price=unit;
+  DB.save();
+  const was=editId;closeSheet();R.render();toast(was?'تم تعديل العملية ✓':'تم الحفظ ✓');
+}
+
+function saveProduct(){
+  const f=$('#form'),p=DB.s.products.find(x=>x.id===prodId),n=f.elements.pname.value.trim();
+  if(!n)return toast('اكتب اسم المنتج',1);
+  const bak={...p};
+  Object.assign(p,{name:n,cost:+f.elements.cost.value||0,price:+f.elements.price.value||0,qty0:+f.elements.qty0.value||0,min:+f.elements.min.value||0});
+  if(stockBroken()){Object.assign(p,bak);return toast('الرصيد الافتتاحي بيخلي المخزون سالب',1)}
+  DB.save();closeSheet();R.render();toast('تم حفظ المنتج ✓');
+}
+
+function delTx(id){
+  const i=DB.s.tx.findIndex(x=>x.id===id),old=DB.s.tx[i];
+  DB.s.tx.splice(i,1);
+  if(stockBroken()){DB.s.tx.splice(i,0,old);toast('ما بتنحذف: بتخلي مخزون منتج سالب. احذف عمليات البيع المرتبطة أولاً',1);return false}
+  DB.save();return true;
 }
 
 document.addEventListener('click',e=>{
   if(e.target.id==='fab')return openSheet();
-  const c=e.target.closest('[data-type],[data-close],[data-del],[data-date]');
+  const c=e.target.closest('[data-edit],[data-prod],[data-type],[data-close],[data-date],[data-deltx],[data-delprod],[data-unit]');
   if(!c)return;
-  if(c.dataset.type){cur=c.dataset.type;drawForm()}
-  else if('close' in c.dataset)closeSheet();
-  else if('date' in c.dataset){$('#dt').style.display='none';$('#datel').style.display='block'}
-  else if(c.dataset.del&&confirm('حذف هذه العملية؟ ستتحدث الأرصدة تلقائياً.')){DB.del('tx',c.dataset.del);R.render()}
+  const d=c.dataset;
+  if(d.edit)openEdit(d.edit);
+  else if(d.prod)openProduct(d.prod);
+  else if(d.type){cur=d.type;drawForm()}
+  else if('close' in d)closeSheet();
+  else if('date' in d){$('#dt').style.display='none';$('#datel').style.display='block'}
+  else if(d.unit){
+    const f=$('#form');
+    if(d.unit==='__other'){
+      setUnit('',true);
+      document.querySelectorAll('#units .u').forEach(b=>b.classList.toggle('on',b.dataset.unit==='__other'));
+      f.elements.eother.style.display='block';f.elements.eother.value='';f.elements.eother.focus();
+    }else setUnit(f.elements.eunit.value===d.unit?'':d.unit,true);
+    sync();
+  }
+  else if('deltx' in d){
+    if(confirm('حذف هذه العملية؟ ستتحدث الأرصدة والمخزون والأرباح تلقائياً.')&&delTx(editId)){closeSheet();R.render();toast('تم حذف العملية')}
+  }
+  else if('delprod' in d){
+    if(DB.s.tx.some(t=>t.productId===prodId))return toast('المنتج عليه عمليات، احذفها أولاً',1);
+    if(confirm('حذف هذا المنتج؟')){DB.del('products',prodId);closeSheet();R.render();toast('تم حذف المنتج')}
+  }
 });
-document.addEventListener('input',e=>{if(e.target.closest('#form'))sync()});
+document.addEventListener('input',e=>{
+  if(!e.target.closest('#form'))return;
+  if(e.target.name==='eother')$('#form').dataset.touched='1';
+  sync();
+});
 document.addEventListener('change',e=>{
   if(!e.target.closest('#form'))return;
-  if(cur==='sale'&&e.target.name==='product')fillPrice();
+  if(cur==='sale'&&e.target.name==='product'&&!editId)fillPrice();
   sync();
 });
 document.addEventListener('submit',e=>{if(e.target.id==='form')submitForm(e)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
