@@ -31,20 +31,31 @@
   <form id="form"></form>
 </div></div>
 
-<div id="login"><div class="lbox">
-  <div class="logo">₪</div>
-  <h1>مالي</h1>
-  <p class="lsub">سجّل دخولك للمتابعة</p>
-  <form id="lform">
-    <label>اسم المستخدم<input id="lu" autocomplete="username" autocapitalize="off"></label>
-    <label>كلمة السر<input id="lp" type="password" autocomplete="current-password"></label>
-    <label class="chk"><input type="checkbox" id="lr" checked><span>تذكرني على هذا الجهاز</span></label>
-    <div id="lerr"></div>
-    <button class="btn">دخول</button>
-  </form>
-  <div class="lhint" id="lhint"></div>
-  <div class="instbox"></div>
-</div></div>
+<div id="login">
+  <div class="lhero">
+    <div class="logo">₪</div>
+    <h1>مالي</h1>
+    <p>أموال البيت والاستثمار بمكان واحد</p>
+  </div>
+  <div class="lcard">
+    <h2>أهلاً بك 👋</h2>
+    <form id="lform">
+      <div class="fl">
+        <label for="lu">اسم المستخدم</label>
+        <div class="fld"><span>👤</span><input id="lu" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
+      </div>
+      <div class="fl">
+        <label for="lp">كلمة السر</label>
+        <div class="fld"><span>🔒</span><input id="lp" type="password" autocomplete="current-password"><button type="button" id="leye" aria-label="إظهار كلمة السر">👁</button></div>
+      </div>
+      <label class="chk"><input type="checkbox" id="lr" checked><span>تذكرني على هذا الجهاز</span></label>
+      <div id="lerr"></div>
+      <button class="btn">دخول</button>
+    </form>
+    <div class="lhint" id="lhint"></div>
+    <div class="instbox"></div>
+  </div>
+</div>
 
 <script src="js/db.js"></script>
 <script src="js/engine.js"></script>

@@ -24,7 +24,12 @@ const Auth={
   bind(){
     document.body.classList.add('locked');
     const g=id=>document.getElementById(id);
-    g('lhint').textContent=this.isDefault()?'للدخول لأول مرة: اسم المستخدم 123 وكلمة السر 123':'';
+    g('lhint').textContent=this.isDefault()?'أول دخول: اسم المستخدم 123 · كلمة السر 123':'';
+    g('leye').onclick=()=>{
+      const p=g('lp'),show=p.type==='password';
+      p.type=show?'text':'password';
+      g('leye').textContent=show?'🙈':'👁';
+    };
     g('lform').onsubmit=async e=>{
       e.preventDefault();
       if(await this.check(g('lu').value,g('lp').value)){
@@ -34,6 +39,6 @@ const Auth={
         g('lp').value='';g('lp').focus();
       }
     };
-    setTimeout(()=>g('lu').focus(),150);
+    if(!Install.mobile)setTimeout(()=>g('lu').focus(),150);
   }
 };

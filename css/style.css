@@ -174,3 +174,32 @@ body.locked #login{display:flex}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:10px;font-size:12px;color:var(--t2)}
 .legend span{display:flex;align-items:center;gap:5px}
 .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+
+/* ===== شاشة الدخول v10 ===== */
+#login{display:none;position:fixed;inset:0;z-index:50;background:var(--bg);overflow:auto;padding:0;align-items:stretch;justify-content:flex-start}
+body.locked #login{display:flex;flex-direction:column}
+.lhero{position:relative;overflow:hidden;background:var(--p);color:#fff;text-align:center;padding:calc(44px + env(safe-area-inset-top)) 24px 84px;border-radius:0 0 32px 32px;flex-shrink:0}
+.lhero::before,.lhero::after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.07)}
+.lhero::before{width:220px;height:220px;top:-90px;inset-inline-start:-60px}
+.lhero::after{width:160px;height:160px;bottom:-70px;inset-inline-end:-40px}
+.lhero .logo{position:relative;width:72px;height:72px;border-radius:20px;background:#fff;color:var(--p);display:grid;place-items:center;font-size:38px;font-weight:700;margin:0 auto 14px;box-shadow:0 8px 20px rgba(0,0,0,.18)}
+.lhero h1{position:relative;font-size:28px}
+.lhero p{position:relative;font-size:14px;color:#BBF7D0;margin-top:4px}
+.lcard{width:calc(100% - 32px);max-width:400px;margin:-48px auto 24px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px 20px;box-shadow:0 10px 30px rgba(15,23,42,.08);position:relative}
+.lcard h2{font-size:18px;margin-bottom:16px}
+.fl{margin-bottom:14px}
+.fl label{display:block;font-size:13px;color:var(--t2);margin-bottom:6px}
+.fld{position:relative;display:flex;align-items:center}
+.fld span{position:absolute;inset-inline-start:14px;font-size:16px;pointer-events:none;opacity:.7}
+.fld input{margin:0;padding-inline-start:44px}
+.fld input[type=password],.fld input#lp{padding-inline-end:48px}
+.fld button{position:absolute;inset-inline-end:4px;width:40px;height:40px;border:0;background:none;font-size:18px;border-radius:10px;opacity:.65}
+.fld button:active{background:var(--bg)}
+.chk{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--dark);margin:2px 0 6px}
+.chk input{width:20px;min-height:20px;height:20px;margin:0;accent-color:var(--p)}
+#lerr{color:var(--danger);font-size:13px;min-height:22px;margin-bottom:4px}
+.lhint{margin-top:14px;font-size:12px;color:var(--t2);background:var(--bg);border-radius:10px;padding:8px 12px;text-align:center}
+.lhint:empty{display:none}
+#login .instbox{padding:0;margin-top:14px}
+@media (min-width:700px){.lhero{padding-bottom:90px}}
