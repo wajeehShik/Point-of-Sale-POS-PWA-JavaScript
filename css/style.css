@@ -214,3 +214,10 @@ body.locked #login{display:flex;flex-direction:column}
 .fbar .rng input{margin-top:5px}
 .search{margin:0 0 8px}
 .bdg{display:inline-block;font-style:normal;font-size:11px;background:#FEF3C7;color:#92400E;border-radius:8px;padding:1px 8px;margin-inline-start:8px;vertical-align:middle}
+
+/* ===== v12 ===== */
+[hidden]{display:none!important}
+main{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
+.plist-scroll{max-height:min(50dvh,430px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.plist-scroll .row-i{padding:12px 14px}
+.pcount{display:flex;justify-content:space-between;font-size:12px;color:var(--t2);padding:0 4px 6px}

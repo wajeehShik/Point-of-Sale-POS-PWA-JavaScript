@@ -26,10 +26,10 @@ R.reg('settings','الإعدادات',()=>`
   <button class="btn alt" onclick="addAcc()">＋ إضافة محفظة</button>
 
   <h3>النسخ الاحتياطي</h3>
-  <div class="card" style="font-size:13px;color:var(--t2);margin-bottom:8px">بياناتك محفوظة على هذا الجهاز وهذا المتصفح فقط. لنقلها لجهاز ثاني: صدّر نسخة من هنا ثم استعدها هناك.</div>
+  <div class="card" style="font-size:13px;color:var(--t2);margin-bottom:8px">بياناتك محفوظة على هذا الجهاز وهذا المتصفح فقط. لنقلها لجهاز ثاني: صدّر نسخة من هنا ثم استعدها هناك.<br>الحالي: ${DB.s.tx.length} عملية · ${DB.s.products.length} منتج</div>
   <button class="btn" onclick="exportData()">تصدير نسخة JSON</button>
   <button class="btn alt" onclick="document.getElementById('imp').click()">استعادة نسخة</button>
-  <input type="file" id="imp" accept=".json" hidden onchange="importData(this.files[0])">
+  <input type="file" id="imp" accept=".json,application/json" hidden onchange="importData(this)">
 
   <h3>تفريغ البيانات</h3>
   <button class="btn alt" onclick="clearTx()">حذف العمليات فقط (${DB.s.tx.length})</button>
@@ -58,9 +58,21 @@ function exportData(){
   a.href=URL.createObjectURL(new Blob([DB.export()],{type:'application/json'}));
   a.download='mali-backup-'+today()+'.json';a.click();
 }
-function importData(f){
-  if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{DB.import(r.result);R.render();toast('تمت الاستعادة ✓')}catch(e){toast('الملف غير صالح',1)}};
+function importData(inp){
+  const f=inp&&inp.files&&inp.files[0];
+  if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      DB.import(r.result);
+      PER.v='';localStorage.setItem('mali_per','');
+      UI.pq='';UI.lim.home=UI.lim.invest=30;UI.tab={home:'all',invest:'all'};
+      R.render();
+      toast(`تمت الاستعادة ✓ (${DB.s.tx.length} عملية · ${DB.s.products.length} منتج)`);
+    }catch(e){toast('الملف غير صالح',1)}
+    inp.value='';
+  };
+  r.onerror=()=>{toast('تعذّرت قراءة الملف',1);inp.value=''};
   r.readAsText(f);
 }
 function clearTx(){

@@ -12,6 +12,11 @@ const DB={
   add(col,o){o.id=this.id();this.s[col].push(o);this.save();return o},
   del(col,id){this.s[col]=this.s[col].filter(x=>x.id!==id);this.save()},
   export(){return JSON.stringify(this.s,null,1)},
-  import(text){const o=JSON.parse(text);if(!o.tx||!o.accounts)throw new Error('bad');this.s=o;this.save()},
+  import(text){
+    const o=JSON.parse(text);
+    if(!o||typeof o!=='object'||!Array.isArray(o.accounts)||!Array.isArray(o.tx))throw new Error('bad');
+    if(!Array.isArray(o.products))o.products=[];
+    this.s=o;this.save();
+  },
   reset(){localStorage.removeItem(this.key);this.load()}
 };
