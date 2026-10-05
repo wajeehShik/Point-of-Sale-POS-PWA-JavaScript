@@ -1,6 +1,8 @@
 /* كل الأرصدة تنحسب من سجل العمليات، ولا تتخزن */
 const E={
   sign(t){return (t.type==='income'||t.type==='sale')?1:-1},
+  /* هل التاريخ داخل الفترة؟ الفترة: '' (الكل) أو 'YYYY-MM[-DD]' أو {from,to} */
+  inP(d,pre){return !pre||(typeof pre==='object'?(d>=pre.from&&d<=pre.to):d.startsWith(pre))},
   bal(){
     const r={home:0,invest:0,acc:{},accS:{}};
     const a=(id,s,v)=>{
@@ -30,11 +32,10 @@ const E={
     s.add(new Date().toLocaleDateString('sv').slice(0,7));
     return [...s].sort().reverse();
   },
-  /* prefix: '' للكل، '2026-10' للشهر، '2026-10-05' لليوم */
-  period(prefix){
+  period(pre){
     const r={home:{income:0,expense:0},invest:{sales:0,cogs:0,expenses:0,purchases:0,profit:0}};
     for(const t of DB.s.tx){
-      if(!t.date.startsWith(prefix))continue;
+      if(!this.inP(t.date,pre))continue;
       if(t.sector==='home'){
         if(t.type==='income')r.home.income+=t.amount;
         if(t.type==='expense')r.home.expense+=t.amount;
@@ -47,9 +48,9 @@ const E={
     r.invest.profit=r.invest.sales-r.invest.cogs-r.invest.expenses;
     return r;
   },
-  productProfit(prefix){
+  productProfit(pre){
     const m={};
-    for(const t of DB.s.tx)if(t.type==='sale'&&t.date.startsWith(prefix))m[t.productId]=(m[t.productId]||0)+t.amount-(t.cogs||0);
+    for(const t of DB.s.tx)if(t.type==='sale'&&this.inP(t.date,pre))m[t.productId]=(m[t.productId]||0)+t.amount-(t.cogs||0);
     return m;
   }
 };

@@ -1,5 +1,14 @@
 R.reg('settings','الإعدادات',()=>`
   ${Auth.isDefault()?'<div class="warnbox">⚠️ ما زلت تستخدم بيانات الدخول الافتراضية (123). يفضّل تغييرها.</div>':''}
+
+  <h3>🗓️ بداية الشهر المالي</h3>
+  <div class="card">
+    <label>يوم بداية الشهر
+      <select onchange="setCycle(this.value)">${Array.from({length:28},(_,i)=>i+1).map(d=>`<option value="${d}"${(DB.s.cycleDay||1)===d?' selected':''}>${d===1?'1 (الشهر العادي)':d}</option>`).join('')}</select>
+    </label>
+    <div style="font-size:12px;color:var(--t2)">إذا بتستلم راتبك يوم 20 اختر 20، وبيظهر بفلتر الفترة «الدورة الحالية» (من 20 لـ19 من الشهر الجاي).</div>
+  </div>
+
   <h3>🔐 بيانات الدخول</h3>
   <div class="card">
     <label>اسم المستخدم<input id="cu" value="${esc(Auth.user())}" autocomplete="off" autocapitalize="off"></label>
@@ -26,6 +35,12 @@ R.reg('settings','الإعدادات',()=>`
   <button class="btn alt" onclick="clearTx()">حذف العمليات فقط (${DB.s.tx.length})</button>
   <button class="btn danger" style="margin-top:8px" onclick="resetAll()">حذف كل شيء</button>`);
 
+function setCycle(v){
+  DB.s.cycleDay=+v;DB.save();
+  if(+v===1){if(PER.v==='c0'||PER.v==='c1'){PER.v='';localStorage.setItem('mali_per','')}}
+  else{PER.v='c0';localStorage.setItem('mali_per','c0')}
+  R.render();toast('تم حفظ بداية الشهر المالي ✓');
+}
 async function saveCred(){
   const cu=$('#cu').value.trim(),cp=$('#cp').value,np=$('#np').value;
   if(!(await Auth.check(Auth.user(),cp)))return toast('كلمة السر الحالية غير صحيحة',1);

@@ -42,56 +42,123 @@ function toast(m,err){
   clearTimeout(el._t);el._t=setTimeout(()=>el.className='',2600);
 }
 
-/* ===== فلتر الفترة ===== */
+/* ===== التواريخ بالعربي ===== */
+const DAYS=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 const MN=['كانون الثاني','شباط','آذار','نيسان','أيار','حزيران','تموز','آب','أيلول','تشرين الأول','تشرين الثاني','كانون الأول'];
-const PER={v:localStorage.getItem('mali_per')||''};
+const pad=n=>String(n).padStart(2,'0');
+const ymd=(y,m,d)=>{const dt=new Date(y,m,d);return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate())};
+const sd=s=>{const a=s.split('-');return (+a[2])+'/'+(+a[1])};
 const monthName=m=>MN[+m.slice(5,7)-1]+' '+m.slice(0,4);
+function dayLabel(ds){
+  const [y,m,d]=ds.split('-').map(Number),dt=new Date(y,m-1,d);
+  const yr=y!==new Date().getFullYear()?'/'+y:'';
+  const base=`${DAYS[dt.getDay()]} ${d}/${m}${yr}`;
+  if(ds===today())return 'اليوم · '+base;
+  const yd=new Date();yd.setDate(yd.getDate()-1);
+  if(ds===yd.toLocaleDateString('sv'))return 'أمس · '+base;
+  return base;
+}
+
+/* ===== حالة الواجهة ===== */
+const UI={tab:{home:'all',invest:'all'},lim:{home:30,invest:30},pq:'',pAll:false};
+
+/* ===== فلتر الفترة (شهر، يوم، دورة مالية، نطاق مخصص) ===== */
+const PER={v:localStorage.getItem('mali_per')||'',from:localStorage.getItem('mali_pf')||'',to:localStorage.getItem('mali_pt')||''};
+/* الدورة المالية: تبدأ من يوم cycleDay (مثلاً 20) وتنتهي قبل نفس اليوم بالشهر الجاي */
+function cycleRange(off){
+  const cd=DB.s.cycleDay||1,n=new Date();
+  let m=n.getMonth();
+  if(n.getDate()<cd)m--;
+  m-=off;
+  return {from:ymd(n.getFullYear(),m,cd),to:ymd(n.getFullYear(),m+1,cd-1)};
+}
 const perPrefix=()=>{
-  if(PER.v&&PER.v!=='today'&&!E.months().includes(PER.v))PER.v='';
-  return PER.v==='today'?today():PER.v;
+  const v=PER.v;
+  if((v==='c0'||v==='c1')&&(DB.s.cycleDay||1)===1){PER.v='';return ''}
+  if(v==='today')return today();
+  if(v==='c0')return cycleRange(0);
+  if(v==='c1')return cycleRange(1);
+  if(v==='range')return {from:PER.from||today(),to:PER.to||today()};
+  if(v&&!E.months().includes(v))PER.v='';
+  return PER.v||'';
 };
-const perText=()=>!PER.v?'كل الفترات':PER.v==='today'?'اليوم':monthName(PER.v);
-function setPeriod(v){PER.v=v;localStorage.setItem('mali_per',v);R.render()}
+const perText=()=>{
+  const v=PER.v;
+  if(!v)return 'كل الفترات';
+  if(v==='today')return 'اليوم';
+  if(v==='c0'||v==='c1'){const r=cycleRange(v==='c0'?0:1);return (v==='c0'?'الدورة الحالية':'الدورة السابقة')+' ('+sd(r.from)+' – '+sd(r.to)+')'}
+  if(v==='range'){const r=perPrefix();return sd(r.from)+' – '+sd(r.to)}
+  return monthName(v);
+};
+function setPeriod(v){
+  PER.v=v;
+  if(v==='range'&&(!PER.from||!PER.to)){
+    PER.from=(DB.s.cycleDay||1)>1?cycleRange(0).from:today().slice(0,7)+'-01';PER.to=today();
+    localStorage.setItem('mali_pf',PER.from);localStorage.setItem('mali_pt',PER.to);
+  }
+  localStorage.setItem('mali_per',v);
+  UI.lim.home=UI.lim.invest=30;
+  R.render();
+}
+function setRange(k,val){
+  if(!val)return;
+  PER[k]=val;
+  if(PER.from>PER.to){const t=PER.from;PER.from=PER.to;PER.to=t}
+  localStorage.setItem('mali_pf',PER.from);localStorage.setItem('mali_pt',PER.to);
+  UI.lim.home=UI.lim.invest=30;
+  R.render();
+}
 function periodBar(){
-  const cm=today().slice(0,7);
-  return `<div class="fbar"><label>📅 الفترة<select onchange="setPeriod(this.value)">
-    <option value=""${PER.v===''?' selected':''}>كل الفترات</option>
-    <option value="today"${PER.v==='today'?' selected':''}>اليوم</option>
-    ${E.months().map(m=>`<option value="${m}"${PER.v===m?' selected':''}>${monthName(m)}${m===cm?' (هذا الشهر)':''}</option>`).join('')}
-  </select></label></div>`;
+  const cm=today().slice(0,7),cd=DB.s.cycleDay||1,v=PER.v;
+  const o=(val,l)=>`<option value="${val}"${v===val?' selected':''}>${l}</option>`;
+  let h=o('','كل الفترات')+o('today','اليوم');
+  if(cd>1){const a=cycleRange(0),b=cycleRange(1);h+=o('c0',`الدورة الحالية (${sd(a.from)} – ${sd(a.to)})`)+o('c1',`الدورة السابقة (${sd(b.from)} – ${sd(b.to)})`)}
+  h+=E.months().map(m=>o(m,monthName(m)+(m===cm?' (هذا الشهر)':''))).join('')+o('range','نطاق مخصص…');
+  const r=v==='range'?perPrefix():null;
+  return `<div class="fbar"><label>📅 الفترة<select onchange="setPeriod(this.value)">${h}</select></label>${r?`<div class="rng"><label>من<input type="date" value="${r.from}" onchange="setRange('from',this.value)"></label><label>إلى<input type="date" value="${r.to}" onchange="setRange('to',this.value)"></label></div>`:''}</div>`;
 }
 
 /* ===== التبويبات ===== */
-const UI={tab:{home:'all',invest:'all'}};
 const TABS={
   home:[['all','الكل',null],['income','إيراد',['income']],['expense','مصروف',['expense']],['transfer','تحويل',['transfer']]],
   invest:[['all','الكل',null],['sale','بيع',['sale']],['purchase','شراء',['purchase']],['expense','مصاريف',['expense']],['other','أخرى',['income','transfer']]]
 };
 function opsBlock(page){
   const defs=TABS[page],def=defs.find(d=>d[0]===UI.tab[page])||defs[0],pre=perPrefix();
-  const list=DB.s.tx.filter(t=>(t.sector===page||t.toSector===page)&&t.date.startsWith(pre)&&(!def[2]||def[2].includes(t.type)));
+  const list=DB.s.tx.filter(t=>(t.sector===page||t.toSector===page)&&E.inP(t.date,pre)&&(!def[2]||def[2].includes(t.type)));
   const showSum=def[2]&&def[2].length===1&&def[2][0]!=='transfer';
   const total=list.reduce((s,t)=>s+t.amount,0);
   return `<div class="tabs">${defs.map(d=>`<button class="tab${d[0]===def[0]?' on':''}" data-tab="${page}:${d[0]}">${d[1]}</button>`).join('')}</div>
   ${showSum?`<div class="tsum"><span>${list.length} عملية</span><b>${fmt(total)}</b></div>`:''}
-  ${txList(list,60)}`;
+  ${txList(list,UI.lim[page],page)}`;
 }
 
-function txList(list,n=10){
-  const rows=[...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id)).slice(0,n);
-  if(!rows.length)return `<div class="list"><div class="empty">${DB.s.tx.length?'ما في عمليات بهذا الفلتر.':'ما في عمليات بعد. اضغط ＋ لإضافة أول عملية.'}</div></div>`;
-  return '<div class="list">'+rows.map(t=>{
+/* قائمة العمليات مجمّعة حسب اليوم مع مجموع كل يوم */
+function txList(list,n=10,page=''){
+  const all=[...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+  if(!all.length)return `<div class="list"><div class="empty">${DB.s.tx.length?'ما في عمليات بهذا الفلتر.':'ما في عمليات بعد. اضغط ＋ لإضافة أول عملية.'}</div></div>`;
+  const net={};
+  all.forEach(t=>{if(t.type!=='transfer')net[t.date]=(net[t.date]||0)+E.sign(t)*t.amount});
+  let h='<div class="list">',day='';
+  all.slice(0,n).forEach(t=>{
+    if(t.date!==day){
+      day=t.date;const v=net[day]||0;
+      h+=`<div class="dh"><span>${dayLabel(day)}</span><b class="${v>0?'pos':v<0?'neg':''}">${v?(v>0?'+':'-')+fmt(Math.abs(v)):''}</b></div>`;
+    }
     const qt=t.eqty?`${t.eqty} ${t.eunit||''}`.trim():(t.qtyText||'');
     const lbl=t.type==='sale'||t.type==='purchase'?`${TYPES[t.type][1]} ${prodName(t.productId)} × ${t.qty}`
       :t.type==='transfer'?`${SECT[t.sector]} ← ${SECT[t.toSector]}`
       :t.type==='expense'?`${t.category}${qt?' · '+qt:''}`:t.category;
-    let meta=t.type==='transfer'?`${accName(t.account)} ← ${accName(t.toAccount)}`:`${SECT[t.sector]} · ${accName(t.account)}`;
+    let meta=t.type==='transfer'?`${accName(t.account)} ← ${accName(t.toAccount)}`:(page?accName(t.account):`${SECT[t.sector]} · ${accName(t.account)}`);
     if(t.type==='sale')meta+=` · ربح ${fmt(t.amount-(t.cogs||0))}`;
     if(t.type==='expense'&&t.unitPrice&&t.eunit)meta+=` · ${fmt(t.unitPrice)}/${t.eunit}`;
     const sg=t.type==='transfer'?'':E.sign(t)>0?'+':'-';
     const cl=t.type==='transfer'?'':E.sign(t)>0?'pos':'neg';
-    return `<div class="row-i" data-edit="${t.id}"><span class="ic">${TYPES[t.type][0]}</span><div class="mid">${esc(lbl)}<span>${esc(meta)} · ${t.date}</span></div><b class="${cl}">${sg}${fmt(t.amount)}</b><span class="chev">‹</span></div>`;
-  }).join('')+'</div>';
+    h+=`<div class="row-i" data-edit="${t.id}"><span class="ic">${TYPES[t.type][0]}</span><div class="mid">${esc(lbl)}<span>${esc(meta)}</span></div><b class="${cl}">${sg}${fmt(t.amount)}</b><span class="chev">‹</span></div>`;
+  });
+  h+='</div>';
+  if(page&&all.length>n)h+=`<button class="btn alt" data-more="${page}">عرض المزيد (${all.length-n})</button>`;
+  return h;
 }
 
 /* ===== نافذة الإضافة / التعديل ===== */
@@ -331,14 +398,16 @@ function delTx(id){
 
 document.addEventListener('click',e=>{
   if(e.target.id==='fab')return openSheet();
-  const c=e.target.closest('[data-edit],[data-prod],[data-type],[data-close],[data-date],[data-deltx],[data-delprod],[data-unit],[data-tab],[data-per]');
+  const c=e.target.closest('[data-edit],[data-prod],[data-type],[data-close],[data-date],[data-deltx],[data-delprod],[data-unit],[data-tab],[data-per],[data-more],[data-pall]');
   if(!c)return;
   const d=c.dataset;
   if(d.edit)openEdit(d.edit);
   else if(d.prod)openProduct(d.prod);
   else if(d.type){cur=d.type;drawForm()}
   else if('close' in d)closeSheet();
-  else if(d.tab){const [pg,k]=d.tab.split(':');UI.tab[pg]=k;R.render()}
+  else if(d.tab){const [pg,k]=d.tab.split(':');UI.tab[pg]=k;UI.lim[pg]=30;R.render()}
+  else if(d.more){UI.lim[d.more]+=30;R.render()}
+  else if('pall' in d){UI.pAll=!UI.pAll;R.render()}
   else if(d.per!==undefined)setPeriod(d.per);
   else if('date' in d){$('#dt').style.display='none';$('#datel').style.display='block'}
   else if(d.unit){

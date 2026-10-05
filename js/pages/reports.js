@@ -1,12 +1,17 @@
 function daysIn(pre){
+  const t=today();
+  if(pre&&typeof pre==='object'){
+    const to=pre.to>t?t:pre.to;
+    return Math.max(1,Math.round((new Date(to)-new Date(pre.from))/864e5)+1);
+  }
   if(pre.length===10)return 1;
   if(pre.length===7){
     const [y,m]=pre.split('-').map(Number),dim=new Date(y,m,0).getDate();
-    return pre===today().slice(0,7)?new Date().getDate():dim;
+    return pre===t.slice(0,7)?new Date().getDate():dim;
   }
-  const ds=DB.s.tx.map(t=>t.date).sort();
+  const ds=DB.s.tx.map(x=>x.date).sort();
   if(!ds.length)return 1;
-  return Math.max(1,Math.round((new Date(today())-new Date(ds[0]))/864e5)+1);
+  return Math.max(1,Math.round((new Date(t)-new Date(ds[0]))/864e5)+1);
 }
 
 function barList(rows,color){
@@ -35,7 +40,7 @@ function monthsChart(){
 
 R.reg('reports','التقارير',()=>{
   const pre=perPrefix(),r=E.period(pre),h=r.home,i=r.invest;
-  const txs=DB.s.tx.filter(t=>t.date.startsWith(pre));
+  const txs=DB.s.tx.filter(t=>E.inP(t.date,pre));
   if(!DB.s.tx.length)return periodBar()+'<div class="list" style="margin-top:14px"><div class="empty">ما في بيانات للتقارير بعد. أضف أول عملية من الرئيسية.</div></div>';
 
   const net=(h.income-h.expense)+i.profit,left=h.income-h.expense;
@@ -69,7 +74,7 @@ R.reg('reports','التقارير',()=>{
   }).join('');
 
   return `${periodBar()}
-  <section class="hero"><small>صافي الفترة · ${perText()}</small><h1 class="${net<0?'':''}">${net>0?'+':''}${fmt(net)}</h1>
+  <section class="hero"><small>صافي الفترة · ${perText()}</small><h1>${net>0?'+':''}${fmt(net)}</h1>
     <div class="split"><div>🏡 المتبقي من البيت<b>${fmt(left)}</b></div><div>📦 ربح الاستثمار<b>${fmt(i.profit)}</b></div></div></section>
 
   <div class="grid">
@@ -100,12 +105,13 @@ R.reg('reports','التقارير',()=>{
 
 function exportCSV(){
   const pre=perPrefix();
-  const rows=[['التاريخ','النوع','القسم','البند','الكمية','المبلغ','المحفظة','ملاحظة']];
-  DB.s.tx.filter(t=>t.date.startsWith(pre)).sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
-    rows.push([t.date,TYPES[t.type][1],SECT[t.sector].replace(/^\S+\s/,''),t.productId?prodName(t.productId):(t.category||''),t.qty||(t.eqty?t.eqty+' '+(t.eunit||''):''),t.amount,accName(t.account),t.note||'']);
+  const rows=[['التاريخ','اليوم','النوع','القسم','البند','الكمية','المبلغ','المحفظة','ملاحظة']];
+  DB.s.tx.filter(t=>E.inP(t.date,pre)).sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+    const [y,m,d]=t.date.split('-').map(Number);
+    rows.push([t.date,DAYS[new Date(y,m-1,d).getDay()],TYPES[t.type][1],SECT[t.sector].replace(/^\S+\s/,''),t.productId?prodName(t.productId):(t.category||''),t.qty||(t.eqty?t.eqty+' '+(t.eunit||''):''),t.amount,accName(t.account),t.note||'']);
   });
   const csv='\ufeff'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download='mali-'+(pre||'all')+'.csv';a.click();
+  a.download='mali-'+(typeof pre==='object'?pre.from+'_'+pre.to:(pre||'all'))+'.csv';a.click();
 }

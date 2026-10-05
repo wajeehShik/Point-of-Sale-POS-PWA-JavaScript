@@ -203,3 +203,14 @@ body.locked #login{display:flex;flex-direction:column}
 .lhint:empty{display:none}
 #login .instbox{padding:0;margin-top:14px}
 @media (min-width:700px){.lhero{padding-bottom:90px}}
+
+/* ===== v11: مجموعات الأيام، نطاق التاريخ، بحث المنتجات ===== */
+.dh{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 14px;background:var(--bg);border-bottom:1px solid var(--line);font-size:13px;font-weight:600;color:var(--t2)}
+.dh b{font-size:13px;white-space:nowrap}
+.list .row-i{padding:10px 14px}
+.list+.btn.alt{margin-top:10px}
+.fbar .rng{display:flex;gap:10px;margin-top:8px}
+.fbar .rng label{display:block;flex:1;margin:0;white-space:normal}
+.fbar .rng input{margin-top:5px}
+.search{margin:0 0 8px}
+.bdg{display:inline-block;font-style:normal;font-size:11px;background:#FEF3C7;color:#92400E;border-radius:8px;padding:1px 8px;margin-inline-start:8px;vertical-align:middle}

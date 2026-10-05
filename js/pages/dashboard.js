@@ -17,5 +17,5 @@ R.reg('dashboard','الرئيسية',()=>{
     <div class="card"><small>ربح الاستثمار</small><b class="${i.profit>=0?'pos':'neg'}">${fmt(i.profit)}</b></div>
   </div>
   <h3>المحافظ · الرصيد الفعلي وتوزيعه</h3><div class="list">${wal}</div>
-  <h3>آخر العمليات · ${perText()}</h3>${txList(DB.s.tx.filter(t=>t.date.startsWith(pre)),10)}`;
+  <h3>آخر العمليات · ${perText()}</h3>${txList(DB.s.tx.filter(t=>E.inP(t.date,pre)),10)}`;
 });
