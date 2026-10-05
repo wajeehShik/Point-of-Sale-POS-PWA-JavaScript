@@ -1,11 +1,12 @@
 R.reg('home','البيت',()=>{
-  const b=E.bal(),d=E.period(today()),m=E.period(today().slice(0,7)).home;
+  const b=E.bal(),pre=perPrefix(),m=E.period(pre).home,d=E.period(today()).home;
   return `<section class="hero"><small>رصيد البيت</small><h1>${fmt(b.home)}</h1></section>
+  ${periodBar()}
   <div class="grid">
-    <div class="card"><small>دخل الشهر</small><b class="pos">${fmt(m.income)}</b></div>
-    <div class="card"><small>مصروف الشهر</small><b class="neg">${fmt(m.expense)}</b></div>
-    <div class="card"><small>المتبقي</small><b>${fmt(m.income-m.expense)}</b></div>
-    <div class="card"><small>مصروف اليوم</small><b class="neg">${fmt(d.home.expense)}</b></div>
+    <div class="card"><small>الدخل · ${perText()}</small><b class="pos">${fmt(m.income)}</b></div>
+    <div class="card"><small>المصروف · ${perText()}</small><b class="neg">${fmt(m.expense)}</b></div>
+    <div class="card"><small>المتبقي · ${perText()}</small><b class="${m.income-m.expense<0?'neg':''}">${fmt(m.income-m.expense)}</b></div>
+    <div class="card"><small>مصروف اليوم</small><b class="neg">${fmt(d.expense)}</b></div>
   </div>
-  <h3>آخر العمليات</h3>${txList(DB.s.tx.filter(t=>t.sector==='home'||t.toSector==='home'),15)}`;
+  <h3>العمليات</h3>${opsBlock('home')}`;
 });

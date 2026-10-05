@@ -2,14 +2,18 @@
 const E={
   sign(t){return (t.type==='income'||t.type==='sale')?1:-1},
   bal(){
-    const r={home:0,invest:0,acc:{}};
-    const a=(id,v)=>{if(id)r.acc[id]=(r.acc[id]||0)+v};
-    DB.s.accounts.forEach(x=>r.acc[x.id]=0);
+    const r={home:0,invest:0,acc:{},accS:{}};
+    const a=(id,s,v)=>{
+      if(!id)return;
+      r.acc[id]=(r.acc[id]||0)+v;
+      const o=r.accS[id]||(r.accS[id]={home:0,invest:0});o[s]+=v;
+    };
+    DB.s.accounts.forEach(x=>{r.acc[x.id]=0;r.accS[x.id]={home:0,invest:0}});
     for(const t of DB.s.tx){
       if(t.type==='transfer'){
         r[t.sector]-=t.amount;r[t.toSector]+=t.amount;
-        if(t.account!==t.toAccount){a(t.account,-t.amount);a(t.toAccount,t.amount)}
-      }else{const v=this.sign(t)*t.amount;r[t.sector]+=v;a(t.account,v)}
+        a(t.account,t.sector,-t.amount);a(t.toAccount,t.toSector,t.amount);
+      }else{const v=this.sign(t)*t.amount;r[t.sector]+=v;a(t.account,t.sector,v)}
     }
     r.total=r.home+r.invest;return r;
   },
@@ -20,7 +24,13 @@ const E={
     return q;
   },
   inventoryValue(){return DB.s.products.reduce((s,p)=>s+Math.max(0,this.stock(p.id))*p.cost,0)},
-  /* prefix: '2026-10-03' لليوم أو '2026-10' للشهر */
+  /* الأشهر الموجودة بالبيانات (الأحدث أولاً) */
+  months(){
+    const s=new Set(DB.s.tx.map(t=>t.date.slice(0,7)));
+    s.add(new Date().toLocaleDateString('sv').slice(0,7));
+    return [...s].sort().reverse();
+  },
+  /* prefix: '' للكل، '2026-10' للشهر، '2026-10-05' لليوم */
   period(prefix){
     const r={home:{income:0,expense:0},invest:{sales:0,cogs:0,expenses:0,purchases:0,profit:0}};
     for(const t of DB.s.tx){

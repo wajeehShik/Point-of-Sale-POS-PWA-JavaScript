@@ -1,7 +1,20 @@
 R.reg('settings','الإعدادات',()=>`
-  <h3>الحسابات المالية</h3>
+  ${Auth.isDefault()?'<div class="warnbox">⚠️ ما زلت تستخدم بيانات الدخول الافتراضية (123). يفضّل تغييرها.</div>':''}
+  <h3>🔐 بيانات الدخول</h3>
+  <div class="card">
+    <label>اسم المستخدم<input id="cu" value="${esc(Auth.user())}" autocomplete="off" autocapitalize="off"></label>
+    <label>كلمة السر الحالية<input id="cp" type="password" autocomplete="current-password"></label>
+    <label>كلمة سر جديدة (اتركها فاضية إذا ما بدك تغيّرها)<input id="np" type="password" autocomplete="new-password"></label>
+    <button class="btn" onclick="saveCred()">حفظ التغييرات</button>
+    <button class="btn alt" onclick="Auth.logout()">تسجيل الخروج</button>
+  </div>
+
+  <h3>📲 التطبيق</h3>
+  ${Install.standalone()?'<div class="okbox">✅ التطبيق مثبّت على جهازك</div>':'<button class="btn" onclick="Install.go()">تثبيت التطبيق على الجوال</button>'}
+
+  <h3>المحافظ</h3>
   <div class="list">${DB.s.accounts.map(a=>`<div class="stat"><span>${esc(a.name)}</span></div>`).join('')}</div>
-  <button class="btn alt" onclick="addAcc()">＋ إضافة حساب</button>
+  <button class="btn alt" onclick="addAcc()">＋ إضافة محفظة</button>
 
   <h3>النسخ الاحتياطي</h3>
   <div class="card" style="font-size:13px;color:var(--t2);margin-bottom:8px">بياناتك محفوظة على هذا الجهاز وهذا المتصفح فقط. لنقلها لجهاز ثاني: صدّر نسخة من هنا ثم استعدها هناك.</div>
@@ -13,9 +26,17 @@ R.reg('settings','الإعدادات',()=>`
   <button class="btn alt" onclick="clearTx()">حذف العمليات فقط (${DB.s.tx.length})</button>
   <button class="btn danger" style="margin-top:8px" onclick="resetAll()">حذف كل شيء</button>`);
 
+async function saveCred(){
+  const cu=$('#cu').value.trim(),cp=$('#cp').value,np=$('#np').value;
+  if(!(await Auth.check(Auth.user(),cp)))return toast('كلمة السر الحالية غير صحيحة',1);
+  if(!cu)return toast('اكتب اسم المستخدم',1);
+  if(np&&np.length<3)return toast('كلمة السر الجديدة قصيرة (3 أحرف على الأقل)',1);
+  await Auth.save(cu,np||cp);
+  R.render();toast('تم حفظ بيانات الدخول ✓');
+}
 function addAcc(){
-  const n=(prompt('اسم الحساب')||'').trim();
-  if(n){DB.add('accounts',{name:n});R.render();toast('تمت إضافة الحساب ✓')}
+  const n=(prompt('اسم المحفظة')||'').trim();
+  if(n){DB.add('accounts',{name:n});R.render();toast('تمت إضافة المحفظة ✓')}
 }
 function exportData(){
   const a=document.createElement('a');
@@ -28,10 +49,10 @@ function importData(f){
   r.readAsText(f);
 }
 function clearTx(){
-  if(!confirm('سيتم حذف كل العمليات، وتبقى الحسابات والمنتجات (المخزون يصير 0). يفضّل تصدير نسخة قبلها. متأكد؟'))return;
+  if(!confirm('سيتم حذف كل العمليات، وتبقى المحافظ والمنتجات (المخزون يصير 0). يفضّل تصدير نسخة قبلها. متأكد؟'))return;
   DB.s.tx=[];DB.save();R.render();toast('تم حذف العمليات');
 }
 function resetAll(){
-  if(!confirm('سيتم حذف كل البيانات نهائياً (عمليات وحسابات ومنتجات). متأكد؟'))return;
+  if(!confirm('سيتم حذف كل البيانات نهائياً (عمليات ومحافظ ومنتجات). متأكد؟'))return;
   DB.reset();R.render();toast('تم حذف كل البيانات');
 }

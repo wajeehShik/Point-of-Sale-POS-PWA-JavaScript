@@ -1,3 +1,4 @@
+let cur='income',editId=null,prodId=null,ctx=null;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=n=>(Math.round(n*100)/100).toLocaleString('en-US')+' ₪';
@@ -8,12 +9,23 @@ const CATS={
   home:{income:['راتب','مساعدة','عمل','دخل آخر']},
   invest:{income:['رأس مال جديد','قرض أو دين','دخل آخر']}
 };
+const DEF={
+  home:['طعام','مواصلات','فواتير','صحة','أطفال','منزل'],
+  invest:['شحن','توصيل','تغليف','إعلان','أدوات','مواصلات للعمل']
+};
 const UNITS=['كيلو','غرام','لتر','قطعة','علبة','كيس'];
+const ALL=['income','expense','sale','purchase','transfer'];
+const allowed=()=>ctx==='home'?['income','expense']:ctx==='invest'?['sale','purchase','expense']:ALL;
+
 const accName=id=>(DB.s.accounts.find(a=>a.id===id)||{}).name||'—';
 const prodName=id=>(DB.s.products.find(p=>p.id===id)||{}).name||'منتج محذوف';
 const opts=(arr,sel)=>arr.map(([v,l])=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(l)}</option>`).join('');
 const accOpts=()=>opts(DB.s.accounts.map(a=>[a.id,a.name]));
-const itemList=()=>[...new Set(DB.s.tx.filter(t=>t.type==='expense').map(t=>t.category))].map(c=>`<option value="${esc(c)}">`).join('');
+const itemList=()=>{
+  const base=ctx?DEF[ctx]:[...DEF.home,...DEF.invest];
+  const used=DB.s.tx.filter(t=>t.type==='expense'&&(!ctx||t.sector===ctx)).map(t=>t.category);
+  return [...new Set([...used,...base])].map(c=>`<option value="${esc(c)}">`).join('');
+};
 const stockBroken=()=>DB.s.products.some(p=>E.stock(p.id)<-1e-9);
 
 /* آخر سعر وحدة دُفع لهذا الصنف (وبنفس الوحدة إذا انحددت) */
@@ -30,9 +42,44 @@ function toast(m,err){
   clearTimeout(el._t);el._t=setTimeout(()=>el.className='',2600);
 }
 
+/* ===== فلتر الفترة ===== */
+const MN=['كانون الثاني','شباط','آذار','نيسان','أيار','حزيران','تموز','آب','أيلول','تشرين الأول','تشرين الثاني','كانون الأول'];
+const PER={v:localStorage.getItem('mali_per')||''};
+const monthName=m=>MN[+m.slice(5,7)-1]+' '+m.slice(0,4);
+const perPrefix=()=>{
+  if(PER.v&&PER.v!=='today'&&!E.months().includes(PER.v))PER.v='';
+  return PER.v==='today'?today():PER.v;
+};
+const perText=()=>!PER.v?'كل الفترات':PER.v==='today'?'اليوم':monthName(PER.v);
+function setPeriod(v){PER.v=v;localStorage.setItem('mali_per',v);R.render()}
+function periodBar(){
+  const cm=today().slice(0,7);
+  return `<div class="fbar"><label>📅 الفترة<select onchange="setPeriod(this.value)">
+    <option value=""${PER.v===''?' selected':''}>كل الفترات</option>
+    <option value="today"${PER.v==='today'?' selected':''}>اليوم</option>
+    ${E.months().map(m=>`<option value="${m}"${PER.v===m?' selected':''}>${monthName(m)}${m===cm?' (هذا الشهر)':''}</option>`).join('')}
+  </select></label></div>`;
+}
+
+/* ===== التبويبات ===== */
+const UI={tab:{home:'all',invest:'all'}};
+const TABS={
+  home:[['all','الكل',null],['income','إيراد',['income']],['expense','مصروف',['expense']],['transfer','تحويل',['transfer']]],
+  invest:[['all','الكل',null],['sale','بيع',['sale']],['purchase','شراء',['purchase']],['expense','مصاريف',['expense']],['other','أخرى',['income','transfer']]]
+};
+function opsBlock(page){
+  const defs=TABS[page],def=defs.find(d=>d[0]===UI.tab[page])||defs[0],pre=perPrefix();
+  const list=DB.s.tx.filter(t=>(t.sector===page||t.toSector===page)&&t.date.startsWith(pre)&&(!def[2]||def[2].includes(t.type)));
+  const showSum=def[2]&&def[2].length===1&&def[2][0]!=='transfer';
+  const total=list.reduce((s,t)=>s+t.amount,0);
+  return `<div class="tabs">${defs.map(d=>`<button class="tab${d[0]===def[0]?' on':''}" data-tab="${page}:${d[0]}">${d[1]}</button>`).join('')}</div>
+  ${showSum?`<div class="tsum"><span>${list.length} عملية</span><b>${fmt(total)}</b></div>`:''}
+  ${txList(list,60)}`;
+}
+
 function txList(list,n=10){
   const rows=[...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id)).slice(0,n);
-  if(!rows.length)return '<div class="list"><div class="empty">ما في عمليات بعد. اضغط ＋ لإضافة أول عملية.</div></div>';
+  if(!rows.length)return `<div class="list"><div class="empty">${DB.s.tx.length?'ما في عمليات بهذا الفلتر.':'ما في عمليات بعد. اضغط ＋ لإضافة أول عملية.'}</div></div>`;
   return '<div class="list">'+rows.map(t=>{
     const qt=t.eqty?`${t.eqty} ${t.eunit||''}`.trim():(t.qtyText||'');
     const lbl=t.type==='sale'||t.type==='purchase'?`${TYPES[t.type][1]} ${prodName(t.productId)} × ${t.qty}`
@@ -48,15 +95,20 @@ function txList(list,n=10){
 }
 
 /* ===== نافذة الإضافة / التعديل ===== */
-let cur='income',editId=null,prodId=null;
 const setTitle=s=>{$('.bar h3').textContent=s};
 function showSheet(){$('#sheet').classList.add('open');document.body.style.overflow='hidden'}
-function openSheet(){editId=null;prodId=null;cur='income';setTitle('عملية جديدة');showSheet();drawForm()}
+function openSheet(){
+  editId=null;prodId=null;
+  ctx=R.cur==='home'?'home':R.cur==='invest'?'invest':null;
+  cur=allowed()[0];
+  setTitle(ctx==='home'?'عملية على البيت':ctx==='invest'?'عملية على الاستثمار':'عملية جديدة');
+  showSheet();drawForm();
+}
 function openEdit(id){
   const t=DB.s.tx.find(x=>x.id===id);if(!t)return;
-  editId=id;prodId=null;cur=t.type;setTitle('تعديل عملية');showSheet();drawForm();fillEdit(t);
+  ctx=null;editId=id;prodId=null;cur=t.type;setTitle('تعديل عملية');showSheet();drawForm();fillEdit(t);
 }
-function openProduct(id){editId=null;prodId=id;cur='product';setTitle('تعديل منتج');showSheet();drawForm()}
+function openProduct(id){ctx=null;editId=null;prodId=id;cur='product';setTitle('تعديل منتج');showSheet();drawForm()}
 function closeSheet(){$('#sheet').classList.remove('open');document.body.style.overflow='';editId=null;prodId=null}
 
 /* اختيار الوحدة بالأزرار */
@@ -86,20 +138,22 @@ function drawForm(){
     return;
   }
   const prods=DB.s.products.map(p=>[p.id,p.name]);
-  let h=editId?'':`<div class="chips">${Object.entries(TYPES).map(([k,[i,l]])=>`<button type="button" class="chip${k===t?' on':''}" data-type="${k}"><span>${i}</span>${l}</button>`).join('')}</div>`;
+  const types=allowed();
+  let h=editId?'':`<div class="chips" style="grid-template-columns:repeat(${types.length},1fr)">${types.map(k=>`<button type="button" class="chip${k===t?' on':''}" data-type="${k}"><span>${TYPES[k][0]}</span>${TYPES[k][1]}</button>`).join('')}</div>`;
   if(t==='income'||t==='expense'){
-    h+=`<label>القسم<select name="sector">${opts([['home',SECT.home],['invest',SECT.invest]])}</select></label>`;
+    h+=(ctx&&!editId)
+      ?`<input type="hidden" name="sector" value="${ctx}">`
+      :`<label>القسم<select name="sector">${opts([['home',SECT.home],['invest',SECT.invest]])}</select></label>`;
     if(t==='income'){
       h+=`<label>مصدر الدخل<select name="category"></select></label>
       <label>المبلغ<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="المبلغ"></label>`;
     }else{
       h+=`<label>الصنف<input name="category" list="items" placeholder="مثال: بطاطا" autocomplete="off"><datalist id="items">${itemList()}</datalist></label>
-      <label>الكمية (اختياري)<input name="eqty" type="number" step="any" min="0" inputmode="decimal" placeholder="مثال: 5"></label>
+      <div class="row"><label>الكمية (اختياري)<input name="eqty" type="number" step="any" min="0" inputmode="decimal" placeholder="5"></label><label>السعر الإجمالي<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="المبلغ"></label></div>
       <div class="lbl">الوحدة</div>
       <div class="units" id="units">${UNITS.map(u=>`<button type="button" class="u" data-unit="${u}">${u}</button>`).join('')}<button type="button" class="u" data-unit="__other">أخرى</button></div>
       <input type="hidden" name="eunit">
       <input name="eother" placeholder="اكتب الوحدة" style="display:none;margin-top:-4px;margin-bottom:12px" autocomplete="off">
-      <label>السعر الإجمالي<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="المبلغ الذي دفعته"></label>
       <div class="total" id="uprice"></div>`;
     }
     h+=`<label>${t==='income'?'الحساب الذي دخلت إليه':'الحساب الذي دُفع منه'}<select name="account">${accOpts()}</select></label>`;
@@ -176,7 +230,6 @@ function sync(){
   if(cur==='expense'&&g('eqty')){
     if(g('eother').style.display!=='none')g('eunit').value=g('eother').value.trim();
     const item=g('category').value.trim();
-    /* اختيار الوحدة تلقائياً من آخر مرة اشتريت فيها الصنف */
     if(!g('eunit').value&&!f.dataset.touched&&item){
       const la=lastUnitPrice(item,'');
       if(la&&la.eunit)setUnit(la.eunit);
@@ -278,13 +331,15 @@ function delTx(id){
 
 document.addEventListener('click',e=>{
   if(e.target.id==='fab')return openSheet();
-  const c=e.target.closest('[data-edit],[data-prod],[data-type],[data-close],[data-date],[data-deltx],[data-delprod],[data-unit]');
+  const c=e.target.closest('[data-edit],[data-prod],[data-type],[data-close],[data-date],[data-deltx],[data-delprod],[data-unit],[data-tab],[data-per]');
   if(!c)return;
   const d=c.dataset;
   if(d.edit)openEdit(d.edit);
   else if(d.prod)openProduct(d.prod);
   else if(d.type){cur=d.type;drawForm()}
   else if('close' in d)closeSheet();
+  else if(d.tab){const [pg,k]=d.tab.split(':');UI.tab[pg]=k;R.render()}
+  else if(d.per!==undefined)setPeriod(d.per);
   else if('date' in d){$('#dt').style.display='none';$('#datel').style.display='block'}
   else if(d.unit){
     const f=$('#form');
