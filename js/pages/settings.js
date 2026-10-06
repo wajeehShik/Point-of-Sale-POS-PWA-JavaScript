@@ -1,6 +1,14 @@
 R.reg('settings','الإعدادات',()=>`
   ${Auth.isDefault()?'<div class="warnbox">⚠️ ما زلت تستخدم بيانات الدخول الافتراضية (123). يفضّل تغييرها.</div>':''}
 
+  <h3>🔒 قفل التطبيق</h3>
+  <div class="card">
+    <label>اطلب تسجيل الدخول مجدداً
+      <select onchange="setLock(this.value)">${[['0','فوراً عند الخروج من التطبيق'],['1','بعد دقيقة من الخروج'],['5','بعد 5 دقائق من الخروج'],['never','فقط عند فتح التطبيق من جديد']].map(([v,l])=>`<option value="${v}"${(Auth.lockMin()<0?'never':String(Auth.lockMin()))===v?' selected':''}>${l}</option>`).join('')}</select>
+    </label>
+    <div style="font-size:12px;color:var(--t2)">في كل الحالات التطبيق بيطلب الدخول كل ما تفتحه من جديد.</div>
+  </div>
+
   <h3>🗓️ بداية الشهر المالي</h3>
   <div class="card">
     <label>يوم بداية الشهر
@@ -26,15 +34,16 @@ R.reg('settings','الإعدادات',()=>`
   <button class="btn alt" onclick="addAcc()">＋ إضافة محفظة</button>
 
   <h3>النسخ الاحتياطي</h3>
-  <div class="card" style="font-size:13px;color:var(--t2);margin-bottom:8px">بياناتك محفوظة على هذا الجهاز وهذا المتصفح فقط. لنقلها لجهاز ثاني: صدّر نسخة من هنا ثم استعدها هناك.<br>الحالي: ${DB.s.tx.length} عملية · ${DB.s.products.length} منتج</div>
+  <div class="card" style="font-size:13px;color:var(--t2);margin-bottom:8px">بياناتك محفوظة على هذا الجهاز وهذا المتصفح فقط. لنقلها لجهاز ثاني: صدّر نسخة من هنا ثم استعدها هناك.</div>
   <button class="btn" onclick="exportData()">تصدير نسخة JSON</button>
   <button class="btn alt" onclick="document.getElementById('imp').click()">استعادة نسخة</button>
-  <input type="file" id="imp" accept=".json,application/json" hidden onchange="importData(this)">
+  <input type="file" id="imp" accept=".json" hidden onchange="importData(this.files[0])">
 
   <h3>تفريغ البيانات</h3>
   <button class="btn alt" onclick="clearTx()">حذف العمليات فقط (${DB.s.tx.length})</button>
   <button class="btn danger" style="margin-top:8px" onclick="resetAll()">حذف كل شيء</button>`);
 
+function setLock(v){localStorage.setItem('mali_lock',v);toast('تم حفظ إعداد القفل ✓')}
 function setCycle(v){
   DB.s.cycleDay=+v;DB.save();
   if(+v===1){if(PER.v==='c0'||PER.v==='c1'){PER.v='';localStorage.setItem('mali_per','')}}
@@ -58,21 +67,9 @@ function exportData(){
   a.href=URL.createObjectURL(new Blob([DB.export()],{type:'application/json'}));
   a.download='mali-backup-'+today()+'.json';a.click();
 }
-function importData(inp){
-  const f=inp&&inp.files&&inp.files[0];
-  if(!f)return;
-  const r=new FileReader();
-  r.onload=()=>{
-    try{
-      DB.import(r.result);
-      PER.v='';localStorage.setItem('mali_per','');
-      UI.pq='';UI.lim.home=UI.lim.invest=30;UI.tab={home:'all',invest:'all'};
-      R.render();
-      toast(`تمت الاستعادة ✓ (${DB.s.tx.length} عملية · ${DB.s.products.length} منتج)`);
-    }catch(e){toast('الملف غير صالح',1)}
-    inp.value='';
-  };
-  r.onerror=()=>{toast('تعذّرت قراءة الملف',1);inp.value=''};
+function importData(f){
+  if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{DB.import(r.result);R.render();toast('تمت الاستعادة ✓')}catch(e){toast('الملف غير صالح',1)}};
   r.readAsText(f);
 }
 function clearTx(){

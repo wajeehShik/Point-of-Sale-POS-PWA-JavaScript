@@ -15,6 +15,8 @@ const E={
       if(t.type==='transfer'){
         r[t.sector]-=t.amount;r[t.toSector]+=t.amount;
         a(t.account,t.sector,-t.amount);a(t.toAccount,t.toSector,t.amount);
+      }else if(t.type==='purchase'&&t.credit){
+        /* شراء بالدين: لا يخرج مال حتى يتم السداد */
       }else{const v=this.sign(t)*t.amount;r[t.sector]+=v;a(t.account,t.sector,v)}
     }
     r.total=r.home+r.invest;return r;
@@ -26,6 +28,31 @@ const E={
     return q;
   },
   inventoryValue(){return DB.s.products.reduce((s,p)=>s+Math.max(0,this.stock(p.id))*p.cost,0)},
+
+  /* الديون: مشتريات بالدين، والمتبقي = المبلغ - السدادات */
+  paidOn(id){return DB.s.tx.filter(t=>t.type==='debtpay'&&t.ref===id).reduce((s,t)=>s+t.amount,0)},
+  debts(){
+    return DB.s.tx.filter(t=>t.type==='purchase'&&t.credit)
+      .map(t=>{const paid=this.paidOn(t.id);return {t,paid,left:t.amount-paid}})
+      .sort((a,b)=>a.t.date.localeCompare(b.t.date));
+  },
+  debtTotal(){return this.debts().reduce((s,d)=>s+Math.max(0,d.left),0)},
+
+  /* تفصيل رصيد الاستثمار النقدي */
+  flow(){
+    const r={cap:0,sales:0,paidPurch:0,debtPay:0,exp:0};
+    for(const t of DB.s.tx){
+      if(t.type==='transfer'){if(t.toSector==='invest')r.cap+=t.amount;if(t.sector==='invest')r.cap-=t.amount}
+      else if(t.sector!=='invest')continue;
+      else if(t.type==='income')r.cap+=t.amount;
+      else if(t.type==='sale')r.sales+=t.amount;
+      else if(t.type==='purchase'){if(!t.credit)r.paidPurch+=t.amount}
+      else if(t.type==='debtpay')r.debtPay+=t.amount;
+      else if(t.type==='expense')r.exp+=t.amount;
+    }
+    return r;
+  },
+
   /* الأشهر الموجودة بالبيانات (الأحدث أولاً) */
   months(){
     const s=new Set(DB.s.tx.map(t=>t.date.slice(0,7)));

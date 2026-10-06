@@ -18,12 +18,34 @@ const Auth={
     return u===c.user&&(await this.hash(p))===c.ph;
   },
   async save(user,pw){localStorage.setItem(this.K,JSON.stringify({user:user.trim(),ph:await this.hash(pw)}))},
-  ok(){return localStorage.getItem('mali_sess')==='1'||sessionStorage.getItem('mali_sess')==='1'},
-  login(remember){(remember?localStorage:sessionStorage).setItem('mali_sess','1')},
-  logout(){localStorage.removeItem('mali_sess');sessionStorage.removeItem('mali_sess');location.reload()},
+
+  /* الجلسة تعيش فقط ما دام التطبيق مفتوحاً (لا تُحفظ بعد الإغلاق) */
+  ok(){localStorage.removeItem('mali_sess');return sessionStorage.getItem('mali_sess')==='1'},
+  login(){sessionStorage.setItem('mali_sess','1')},
+  logout(){sessionStorage.removeItem('mali_sess');location.reload()},
+
+  /* القفل التلقائي: 0 فوراً، 1 أو 5 دقائق، -1 أبداً */
+  lockMin(){const v=localStorage.getItem('mali_lock');return v===null?0:v==='never'?-1:+v},
+  lock(){
+    sessionStorage.removeItem('mali_sess');
+    if(typeof closeSheet==='function')closeSheet();
+    this.bind();
+  },
+  watch(){
+    let t=0;
+    document.addEventListener('visibilitychange',()=>{
+      if(document.hidden){t=Date.now();return}
+      if(!t||!this.ok())return;
+      const m=this.lockMin(),away=Date.now()-t;
+      t=0;
+      if(m>=0&&away>=m*600000)this.lock();
+    });
+  },
+
   bind(){
     document.body.classList.add('locked');
     const g=id=>document.getElementById(id);
+    g('lp').value='';g('lerr').textContent='';
     g('lhint').textContent=this.isDefault()?'أول دخول: اسم المستخدم 123 · كلمة السر 123':'';
     g('leye').onclick=()=>{
       const p=g('lp'),show=p.type==='password';
@@ -33,7 +55,7 @@ const Auth={
     g('lform').onsubmit=async e=>{
       e.preventDefault();
       if(await this.check(g('lu').value,g('lp').value)){
-        this.login(g('lr').checked);g('lp').value='';g('lerr').textContent='';start();
+        this.login();g('lp').value='';g('lerr').textContent='';start();
       }else{
         g('lerr').textContent='اسم المستخدم أو كلمة السر غير صحيحة';
         g('lp').value='';g('lp').focus();

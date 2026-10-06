@@ -48,7 +48,6 @@
         <label for="lp">كلمة السر</label>
         <div class="fld"><span>🔒</span><input id="lp" type="password" autocomplete="current-password"><button type="button" id="leye" aria-label="إظهار كلمة السر">👁</button></div>
       </div>
-      <label class="chk"><input type="checkbox" id="lr" checked><span>تذكرني على هذا الجهاز</span></label>
       <div id="lerr"></div>
       <button class="btn">دخول</button>
     </form>
@@ -69,8 +68,13 @@
 <script src="js/pages/settings.js"></script>
 <script>
 DB.load();
-function start(){document.body.classList.remove('locked');R.start()}
+let started=false;
+function start(){
+  document.body.classList.remove('locked');
+  if(!started){started=true;R.start()}else R.render();
+}
 if(Auth.ok())start();else Auth.bind();
+Auth.watch();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
 </script>
 </body>

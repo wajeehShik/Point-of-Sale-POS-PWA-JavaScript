@@ -1,9 +1,9 @@
-let cur='income',editId=null,prodId=null,ctx=null;
+let cur='income',editId=null,prodId=null,ctx=null,payRef=null;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=n=>(Math.round(n*100)/100).toLocaleString('en-US')+' ₪';
 const today=()=>new Date().toLocaleDateString('sv');
-const TYPES={income:['💰','إيراد'],expense:['💸','مصروف'],sale:['🛒','بيع'],purchase:['📦','شراء'],transfer:['🔄','تحويل']};
+const TYPES={income:['💰','إيراد'],expense:['💸','مصروف'],sale:['🛒','بيع'],purchase:['📦','شراء'],transfer:['🔄','تحويل'],debtpay:['🤝','سداد دين']};
 const SECT={home:'🏡 البيت',invest:'📦 الاستثمار'};
 const CATS={
   home:{income:['راتب','مساعدة','عمل','دخل آخر']},
@@ -62,9 +62,8 @@ function dayLabel(ds){
 /* ===== حالة الواجهة ===== */
 const UI={tab:{home:'all',invest:'all'},lim:{home:30,invest:30},pq:'',pAll:false};
 
-/* ===== فلتر الفترة (شهر، يوم، دورة مالية، نطاق مخصص) ===== */
+/* ===== فلتر الفترة ===== */
 const PER={v:localStorage.getItem('mali_per')||'',from:localStorage.getItem('mali_pf')||'',to:localStorage.getItem('mali_pt')||''};
-/* الدورة المالية: تبدأ من يوم cycleDay (مثلاً 20) وتنتهي قبل نفس اليوم بالشهر الجاي */
 function cycleRange(off){
   const cd=DB.s.cycleDay||1,n=new Date();
   let m=n.getMonth();
@@ -121,7 +120,7 @@ function periodBar(){
 /* ===== التبويبات ===== */
 const TABS={
   home:[['all','الكل',null],['income','إيراد',['income']],['expense','مصروف',['expense']],['transfer','تحويل',['transfer']]],
-  invest:[['all','الكل',null],['sale','بيع',['sale']],['purchase','شراء',['purchase']],['expense','مصاريف',['expense']],['other','أخرى',['income','transfer']]]
+  invest:[['all','الكل',null],['sale','بيع',['sale']],['purchase','شراء',['purchase']],['expense','مصاريف',['expense']],['other','أخرى',['income','transfer','debtpay']]]
 };
 function opsBlock(page){
   const defs=TABS[page],def=defs.find(d=>d[0]===UI.tab[page])||defs[0],pre=perPrefix();
@@ -138,7 +137,7 @@ function txList(list,n=10,page=''){
   const all=[...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
   if(!all.length)return `<div class="list"><div class="empty">${DB.s.tx.length?'ما في عمليات بهذا الفلتر.':'ما في عمليات بعد. اضغط ＋ لإضافة أول عملية.'}</div></div>`;
   const net={};
-  all.forEach(t=>{if(t.type!=='transfer')net[t.date]=(net[t.date]||0)+E.sign(t)*t.amount});
+  all.forEach(t=>{if(t.type!=='transfer'&&!t.credit)net[t.date]=(net[t.date]||0)+E.sign(t)*t.amount});
   let h='<div class="list">',day='';
   all.slice(0,n).forEach(t=>{
     if(t.date!==day){
@@ -146,14 +145,18 @@ function txList(list,n=10,page=''){
       h+=`<div class="dh"><span>${dayLabel(day)}</span><b class="${v>0?'pos':v<0?'neg':''}">${v?(v>0?'+':'-')+fmt(Math.abs(v)):''}</b></div>`;
     }
     const qt=t.eqty?`${t.eqty} ${t.eunit||''}`.trim():(t.qtyText||'');
+    const rp=t.type==='debtpay'?DB.s.tx.find(x=>x.id===t.ref):null;
     const lbl=t.type==='sale'||t.type==='purchase'?`${TYPES[t.type][1]} ${prodName(t.productId)} × ${t.qty}`
+      :t.type==='debtpay'?'سداد دين'+(rp?' · '+prodName(rp.productId):'')
       :t.type==='transfer'?`${SECT[t.sector]} ← ${SECT[t.toSector]}`
       :t.type==='expense'?`${t.category}${qt?' · '+qt:''}`:t.category;
-    let meta=t.type==='transfer'?`${accName(t.account)} ← ${accName(t.toAccount)}`:(page?accName(t.account):`${SECT[t.sector]} · ${accName(t.account)}`);
+    let meta=t.type==='transfer'?`${accName(t.account)} ← ${accName(t.toAccount)}`
+      :t.credit?`${page?'':SECT[t.sector]+' · '}بالدين${t.supplier?' · '+t.supplier:''}`
+      :(page?accName(t.account):`${SECT[t.sector]} · ${accName(t.account)}`);
     if(t.type==='sale')meta+=` · ربح ${fmt(t.amount-(t.cogs||0))}`;
     if(t.type==='expense'&&t.unitPrice&&t.eunit)meta+=` · ${fmt(t.unitPrice)}/${t.eunit}`;
-    const sg=t.type==='transfer'?'':E.sign(t)>0?'+':'-';
-    const cl=t.type==='transfer'?'':E.sign(t)>0?'pos':'neg';
+    const sg=t.type==='transfer'||t.credit?'':E.sign(t)>0?'+':'-';
+    const cl=t.credit?'warn':t.type==='transfer'?'':E.sign(t)>0?'pos':'neg';
     h+=`<div class="row-i" data-edit="${t.id}"><span class="ic">${TYPES[t.type][0]}</span><div class="mid">${esc(lbl)}<span>${esc(meta)}</span></div><b class="${cl}">${sg}${fmt(t.amount)}</b><span class="chev">‹</span></div>`;
   });
   h+='</div>';
@@ -165,7 +168,7 @@ function txList(list,n=10,page=''){
 const setTitle=s=>{$('.bar h3').textContent=s};
 function showSheet(){$('#sheet').classList.add('open');document.body.style.overflow='hidden'}
 function openSheet(){
-  editId=null;prodId=null;
+  editId=null;prodId=null;payRef=null;
   ctx=R.cur==='home'?'home':R.cur==='invest'?'invest':null;
   cur=allowed()[0];
   setTitle(ctx==='home'?'عملية على البيت':ctx==='invest'?'عملية على الاستثمار':'عملية جديدة');
@@ -173,10 +176,12 @@ function openSheet(){
 }
 function openEdit(id){
   const t=DB.s.tx.find(x=>x.id===id);if(!t)return;
-  ctx=null;editId=id;prodId=null;cur=t.type;setTitle('تعديل عملية');showSheet();drawForm();fillEdit(t);
+  ctx=null;editId=id;prodId=null;payRef=t.type==='debtpay'?t.ref:null;cur=t.type;
+  setTitle('تعديل عملية');showSheet();drawForm();fillEdit(t);
 }
-function openProduct(id){ctx=null;editId=null;prodId=id;cur='product';setTitle('تعديل منتج');showSheet();drawForm()}
-function closeSheet(){$('#sheet').classList.remove('open');document.body.style.overflow='';editId=null;prodId=null}
+function openProduct(id){ctx=null;editId=null;payRef=null;prodId=id;cur='product';setTitle('تعديل منتج');showSheet();drawForm()}
+function openPay(id){ctx=null;editId=null;prodId=null;payRef=id;cur='debtpay';setTitle('سداد دين');showSheet();drawForm()}
+function closeSheet(){$('#sheet').classList.remove('open');document.body.style.overflow='';editId=null;prodId=null;payRef=null}
 
 /* اختيار الوحدة بالأزرار */
 function setUnit(u,manual){
@@ -196,17 +201,27 @@ function setUnit(u,manual){
 function drawForm(){
   const t=cur;
   if(t==='product'){
-    const p=DB.s.products.find(x=>x.id===prodId);
+    const p=DB.s.products.find(x=>x.id===prodId),st=E.stock(p.id);
+    let rp=0,sold=0;
+    DB.s.tx.forEach(x=>{if(x.type==='sale'&&x.productId===p.id){rp+=x.amount-(x.cogs||0);sold+=x.qty}});
+    const dv=E.debts().filter(d=>d.t.productId===p.id).reduce((s,d)=>s+Math.max(0,d.left),0);
     $('#form').innerHTML=`<label>اسم المنتج<input name="pname" value="${esc(p.name)}"></label>
-    <div class="row"><label>سعر التكلفة<input name="cost" type="number" step="any" inputmode="decimal" value="${p.cost}"></label><label>سعر البيع<input name="price" type="number" step="any" inputmode="decimal" value="${p.price}"></label></div>
-    <div class="row"><label>رصيد افتتاحي<input name="qty0" type="number" step="any" inputmode="decimal" value="${p.qty0||0}"></label><label>الحد الأدنى<input name="min" type="number" step="any" inputmode="decimal" value="${p.min||0}"></label></div>
-    <div class="sumbox"><div class="stat"><span>المتوفر حالياً</span><b>${E.stock(p.id)}</b></div><div class="note">تغيير السعر لا يغيّر أرباح المبيعات السابقة.</div></div>
+    <div class="row"><label>سعر التكلفة (للوحدة)<input name="cost" type="number" step="any" inputmode="decimal" value="${p.cost}"></label><label>سعر البيع (للوحدة)<input name="price" type="number" step="any" inputmode="decimal" value="${p.price}"></label></div>
+    <div class="row"><label>الكمية المتوفرة<input name="stock" type="number" step="any" min="0" inputmode="decimal" value="${st}"></label><label>الحد الأدنى للتنبيه<input name="min" type="number" step="any" inputmode="decimal" value="${p.min||0}"></label></div>
+    <div class="sumbox">
+      <div class="stat"><span>ربح الوحدة</span><b id="pu">—</b></div>
+      <div class="stat"><span>هامش الربح</span><b id="pm">—</b></div>
+      <div class="stat"><span>ربح متوقع من المتبقي</span><b id="pe">—</b></div>
+      <div class="stat"><span>الربح المتحقق (بيع ${sold})</span><b class="${rp>=0?'pos':'neg'}">${rp>0?'+':''}${fmt(rp)}</b></div>
+      ${dv>0.005?`<div class="stat"><span>دين عليك لهذا المنتج</span><b class="neg">${fmt(dv)}</b></div>`:''}
+      <div class="note">تعديل الكمية = جرد وتصحيح للمخزون. وتغيير السعر لا يغيّر أرباح المبيعات السابقة.</div>
+    </div>
     <div class="savebar"><button class="btn">حفظ</button><button type="button" class="btn alt" style="color:var(--danger);margin-top:8px" data-delprod>حذف المنتج</button></div>`;
-    return;
+    sync();return;
   }
   const prods=DB.s.products.map(p=>[p.id,p.name]);
   const types=allowed();
-  let h=editId?'':`<div class="chips" style="grid-template-columns:repeat(${types.length},1fr)">${types.map(k=>`<button type="button" class="chip${k===t?' on':''}" data-type="${k}"><span>${TYPES[k][0]}</span>${TYPES[k][1]}</button>`).join('')}</div>`;
+  let h=(editId||t==='debtpay')?'':`<div class="chips" style="grid-template-columns:repeat(${types.length},1fr)">${types.map(k=>`<button type="button" class="chip${k===t?' on':''}" data-type="${k}"><span>${TYPES[k][0]}</span>${TYPES[k][1]}</button>`).join('')}</div>`;
   if(t==='income'||t==='expense'){
     h+=(ctx&&!editId)
       ?`<input type="hidden" name="sector" value="${ctx}">`
@@ -226,9 +241,9 @@ function drawForm(){
     h+=`<label>${t==='income'?'الحساب الذي دخلت إليه':'الحساب الذي دُفع منه'}<select name="account">${accOpts()}</select></label>`;
   }else if(t==='sale'){
     h+=`<label>المنتج<select name="product">${opts(prods)}</select></label>
-    <div class="row"><label>الكمية<input name="qty" type="number" step="any" value="1" min="0" inputmode="decimal"></label><label>سعر البيع (للوحدة)<input name="unit" type="number" step="any" min="0" inputmode="decimal" placeholder="السعر"></label></div>
+    <div class="row"><label>الكمية<input name="qty" type="number" step="any" value="1" min="0" inputmode="decimal"></label><label>إجمالي البيع<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="الإجمالي"></label></div>
     <div class="sumbox">
-      <div class="stat"><span>الإجمالي</span><b id="tot">0 ₪</b></div>
+      <div class="stat"><span>سعر الوحدة</span><b id="tot">—</b></div>
       <div class="stat"><span>تكلفة الوحدة</span><b id="cst">—</b></div>
       <div class="stat"><span>الربح</span><b id="prf">—</b></div>
       <div class="note" id="stk"></div>
@@ -237,8 +252,20 @@ function drawForm(){
   }else if(t==='purchase'){
     h+=`<label>المنتج<select name="product">${opts(prods)}<option value="__new">＋ منتج جديد</option></select></label>
     <label id="newp" style="display:none">اسم المنتج الجديد<input name="newname"></label>
-    <div class="row"><label>الكمية<input name="qty" type="number" step="any" min="0" inputmode="decimal" placeholder="الكمية"></label><label>المبلغ المدفوع<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="الإجمالي"></label></div>
+    <div class="row"><label>الكمية<input name="qty" type="number" step="any" min="0" inputmode="decimal" placeholder="الكمية"></label><label>المبلغ الإجمالي<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="الإجمالي"></label></div>
     <div class="total">تكلفة الوحدة: <b id="tot">—</b></div>
+    <label class="chk"><input type="checkbox" name="credit"><span>اشتريتها بالدين (لم أدفع بعد)</span></label>
+    <label id="supl" style="display:none">اسم المورّد (اختياري)<input name="supplier" autocomplete="off"></label>
+    <div id="accl"><label>الحساب الذي دُفع منه<select name="account">${accOpts()}</select></label></div>`;
+  }else if(t==='debtpay'){
+    const d=E.debts().find(x=>x.t.id===payRef);
+    if(!d){$('#form').innerHTML='<div class="empty">هذا الدين غير موجود</div>';return}
+    h+=`<div class="sumbox">
+      <div class="stat"><span>${esc(prodName(d.t.productId))} × ${d.t.qty}${d.t.supplier?' · '+esc(d.t.supplier):''}</span><b>${fmt(d.t.amount)}</b></div>
+      <div class="stat"><span>المسدد</span><b>${fmt(d.paid)}</b></div>
+      <div class="stat"><span>المتبقي</span><b class="neg">${fmt(d.left)}</b></div>
+    </div>
+    <label>مبلغ السداد<input name="amount" type="number" step="any" min="0" inputmode="decimal" value="${editId?'':Math.round(Math.max(0,d.left)*100)/100}"></label>
     <label>الحساب الذي دُفع منه<select name="account">${accOpts()}</select></label>`;
   }else{
     h+=`<div class="row"><label>من قسم<select name="sector">${opts([['home',SECT.home],['invest',SECT.invest]])}</select></label><label>إلى قسم<select name="toSector">${opts([['invest',SECT.invest],['home',SECT.home]])}</select></label></div>
@@ -250,8 +277,7 @@ function drawForm(){
   <label>ملاحظة<input name="note" placeholder="اختياري"></label>
   <div class="savebar"><button class="btn">حفظ</button>${editId?'<button type="button" class="btn alt" style="color:var(--danger);margin-top:8px" data-deltx>حذف العملية</button>':''}</div>`;
   $('#form').innerHTML=h;
-  $('#form').dataset.touched='';
-  if(cur==='sale'&&!editId)fillPrice();
+  $('#form').dataset.touched='';$('#form').dataset.amtT='';
   sync();
 }
 
@@ -259,31 +285,37 @@ function fillEdit(t){
   const f=$('#form');
   const set=(n,v)=>{
     const el=f.elements[n];if(!el||v===undefined||v===null)return;
-    if(el.tagName==='SELECT'&&![...el.options].some(o=>o.value===String(v)))el.add(new Option(v,v));
+    if(el.tagName==='SELECT'){
+      if(v==='')return;
+      if(![...el.options].some(o=>o.value===String(v)))el.add(new Option(v,v));
+    }
     el.value=v;
   };
   set('sector',t.sector);sync();
   set('category',t.category);
-  if(t.type!=='sale')set('amount',t.amount);
+  set('amount',t.amount);
   set('eqty',t.eqty);
   if(t.type==='expense'){f.dataset.touched='1';setUnit(t.eunit||'')}
   set('account',t.account);set('toSector',t.toSector);set('toAccount',t.toAccount);
   set('product',t.productId);set('qty',t.qty);
-  if(t.type==='sale')set('unit',t.unit);
+  if(f.elements.credit){f.elements.credit.checked=!!t.credit;set('supplier',t.supplier)}
   set('note',t.note);set('date',t.date);
+  f.dataset.amtT='1';
   $('#dt').style.display='none';$('#datel').style.display='block';
   sync();
-}
-
-/* يعبّي آخر سعر بيع للمنتج تلقائياً */
-function fillPrice(){
-  const f=$('#form'),p=DB.s.products.find(x=>x.id===f.elements.product.value);
-  f.elements.unit.value=p&&p.price>0?p.price:'';
 }
 
 function sync(){
   const f=$('#form'),g=n=>f.elements[n];
   if(!f.elements.length)return;
+  if(cur==='product'){
+    const c=+g('cost').value||0,pr=+g('price').value||0,s=+g('stock').value||0,u=pr-c;
+    const set=(id,tx,cl)=>{const el=$(id);el.textContent=tx;el.className=cl};
+    set('#pu',(u>0?'+':'')+fmt(u),u>=0?'pos':'neg');
+    set('#pm',pr>0?Math.round(u/pr*100)+'%':'—',u>=0?'pos':'neg');
+    set('#pe',(u*s>0?'+':'')+fmt(u*s),u>=0?'pos':'neg');
+    return;
+  }
   const c=g('category');
   /* نعيد بناء مصادر الدخل فقط لما يتغير القسم، حتى ما يضيع اختيار المستخدم */
   if(c&&c.tagName==='SELECT'&&g('sector')){
@@ -309,17 +341,23 @@ function sync(){
     $('#uprice').innerHTML=parts.join('<br>');
   }
   const p=g('product')?DB.s.products.find(x=>x.id===g('product').value):null;
-  if(cur==='sale'&&g('qty')&&g('unit')){
-    const q=+g('qty').value||0,u=+g('unit').value||0,cost=p?p.cost:0,profit=(u-cost)*q;
-    $('#tot').textContent=fmt(q*u);
+  /* البيع: أدخل الإجمالي والتطبيق يحسب سعر الوحدة والربح */
+  if(cur==='sale'&&g('qty')&&g('amount')){
+    const q=+g('qty').value||0;
+    if(!f.dataset.amtT&&p&&p.price>0&&q>0)g('amount').value=+(q*p.price).toFixed(2);
+    const a=+g('amount').value||0,cost=p?p.cost:0,profit=a-cost*q;
+    $('#tot').textContent=q>0&&a>0?fmt(a/q):'—';
     $('#cst').textContent=p?fmt(cost):'—';
     const pr=$('#prf');
-    if(q>0&&u>0){pr.textContent=(profit>=0?'+':'')+fmt(profit);pr.className=profit>=0?'pos':'neg'}
+    if(q>0&&a>0){pr.textContent=(profit>=0?'+':'')+fmt(profit);pr.className=profit>=0?'pos':'neg'}
     else{pr.textContent='—';pr.className=''}
   }
   if(cur==='purchase'&&g('qty')&&g('amount')){
     const q=+g('qty').value,a=+g('amount').value;
     $('#tot').textContent=q>0&&a>0?fmt(a/q):'—';
+    const cr=g('credit').checked;
+    $('#supl').style.display=cr?'block':'none';
+    $('#accl').style.display=cr?'none':'block';
   }
   if(g('product')){
     const np=$('#newp');if(np)np.style.display=g('product').value==='__new'?'block':'none';
@@ -332,7 +370,7 @@ function submitForm(e){
   if(cur==='product')return saveProduct();
   const f=$('#form'),v=n=>f.elements[n]?f.elements[n].value:'';
   const t={type:cur,date:v('date')||today(),note:v('note'),account:v('account')};
-  const qty=+v('qty'),unit=+v('unit');
+  const qty=+v('qty');
   const old=editId?DB.s.tx.find(x=>x.id===editId):null;
   let newPid=null,pid=null,p=null;
 
@@ -348,12 +386,25 @@ function submitForm(e){
   else if(cur==='transfer'){
     t.sector=v('sector');t.toSector=v('toSector');t.toAccount=v('toAccount');t.amount=+v('amount');
     if(t.sector===t.toSector&&t.account===t.toAccount)return toast('اختر قسمين أو حسابين مختلفين',1);
-  }else{
-    t.sector='invest';t.qty=qty;
-    if(cur==='sale'){t.unit=unit;t.amount=qty*unit}
-    else{t.amount=+v('amount');t.unit=qty>0?t.amount/qty:0}
-    if(!(qty>0&&t.amount>0))return toast('أدخل الكمية والسعر',1);
+  }
+  else if(cur==='debtpay'){
+    const d=E.debts().find(x=>x.t.id===payRef);if(!d)return toast('الدين غير موجود',1);
+    t.sector='invest';t.ref=payRef;t.amount=+v('amount');
+    if(t.amount>d.left+(old?old.amount:0)+0.005)return toast('المبلغ أكبر من المتبقي من الدين',1);
+  }
+  else{
+    t.sector='invest';t.qty=qty;t.amount=+v('amount');t.unit=qty>0?t.amount/qty:0;
+    if(!(qty>0&&t.amount>0))return toast(cur==='sale'?'أدخل الكمية وإجمالي البيع':'أدخل الكمية والمبلغ',1);
     pid=v('product');
+    if(cur==='purchase'){
+      t.credit=f.elements.credit.checked;
+      if(t.credit){t.account='';t.supplier=v('supplier').trim()}
+      const paid=old?E.paidOn(old.id):0;
+      if(paid>0){
+        if(!t.credit)return toast('عليه سدادات، احذفها أولاً',1);
+        if(t.amount<paid-0.005)return toast('المبلغ أقل من المسدد',1);
+      }
+    }
     if(pid==='__new'){
       const name=v('newname').trim();if(!name)return toast('اكتب اسم المنتج',1);
       pid=newPid=DB.add('products',{name,cost:t.unit,price:0,qty0:0,min:0}).id;
@@ -375,7 +426,7 @@ function submitForm(e){
     return toast('الكمية أكبر من المخزون المتوفر',1);
   }
   if(p&&cur==='purchase')p.cost=t.unit;
-  if(p&&cur==='sale')p.price=unit;
+  if(p&&cur==='sale')p.price=t.unit;
   DB.save();
   const was=editId;closeSheet();R.render();toast(was?'تم تعديل العملية ✓':'تم الحفظ ✓');
 }
@@ -383,14 +434,19 @@ function submitForm(e){
 function saveProduct(){
   const f=$('#form'),p=DB.s.products.find(x=>x.id===prodId),n=f.elements.pname.value.trim();
   if(!n)return toast('اكتب اسم المنتج',1);
-  const bak={...p};
-  Object.assign(p,{name:n,cost:+f.elements.cost.value||0,price:+f.elements.price.value||0,qty0:+f.elements.qty0.value||0,min:+f.elements.min.value||0});
-  if(stockBroken()){Object.assign(p,bak);return toast('الرصيد الافتتاحي بيخلي المخزون سالب',1)}
+  const ns=+f.elements.stock.value;
+  if(!(ns>=0))return toast('الكمية غير صحيحة',1);
+  const bak={...p},cs=E.stock(p.id);
+  Object.assign(p,{name:n,cost:+f.elements.cost.value||0,price:+f.elements.price.value||0,min:+f.elements.min.value||0});
+  /* تعديل الكمية = تعديل الرصيد الافتتاحي بمقدار الفرق */
+  p.qty0=Math.round(((+p.qty0||0)+ns-cs)*1e6)/1e6;
+  if(stockBroken()){Object.assign(p,bak);return toast('الكمية بتخلي المخزون سالب',1)}
   DB.save();closeSheet();R.render();toast('تم حفظ المنتج ✓');
 }
 
 function delTx(id){
   const i=DB.s.tx.findIndex(x=>x.id===id),old=DB.s.tx[i];
+  if(old.type==='purchase'&&old.credit&&E.paidOn(id)>0){toast('على هذا الدين سدادات، احذفها أولاً',1);return false}
   DB.s.tx.splice(i,1);
   if(stockBroken()){DB.s.tx.splice(i,0,old);toast('ما بتنحذف: بتخلي مخزون منتج سالب. احذف عمليات البيع المرتبطة أولاً',1);return false}
   DB.save();return true;
@@ -398,11 +454,12 @@ function delTx(id){
 
 document.addEventListener('click',e=>{
   if(e.target.id==='fab')return openSheet();
-  const c=e.target.closest('[data-edit],[data-prod],[data-type],[data-close],[data-date],[data-deltx],[data-delprod],[data-unit],[data-tab],[data-per],[data-more],[data-pall]');
+  const c=e.target.closest('[data-edit],[data-prod],[data-pay],[data-type],[data-close],[data-date],[data-deltx],[data-delprod],[data-unit],[data-tab],[data-per],[data-more],[data-pall]');
   if(!c)return;
   const d=c.dataset;
   if(d.edit)openEdit(d.edit);
   else if(d.prod)openProduct(d.prod);
+  else if(d.pay)openPay(d.pay);
   else if(d.type){cur=d.type;drawForm()}
   else if('close' in d)closeSheet();
   else if(d.tab){const [pg,k]=d.tab.split(':');UI.tab[pg]=k;UI.lim[pg]=30;R.render()}
@@ -429,12 +486,14 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   if(!e.target.closest('#form'))return;
-  if(e.target.name==='eother')$('#form').dataset.touched='1';
+  const f=$('#form');
+  if(e.target.name==='eother')f.dataset.touched='1';
+  if(e.target.name==='amount'&&cur==='sale')f.dataset.amtT='1';
   sync();
 });
 document.addEventListener('change',e=>{
   if(!e.target.closest('#form'))return;
-  if(cur==='sale'&&e.target.name==='product'&&!editId)fillPrice();
+  if(cur==='sale'&&e.target.name==='product'&&!editId)$('#form').dataset.amtT='';
   sync();
 });
 document.addEventListener('submit',e=>{if(e.target.id==='form')submitForm(e)});
