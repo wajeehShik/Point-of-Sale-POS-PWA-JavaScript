@@ -1,4 +1,4 @@
-let cur='income',editId=null,prodId=null,ctx=null,payRef=null;
+let cur='income',editId=null,prodId=null,ctx=null,payRef=null,supKey='';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=n=>(Math.round(n*100)/100).toLocaleString('en-US')+' ₪';
@@ -16,6 +16,7 @@ const DEF={
 const UNITS=['كيلو','غرام','لتر','قطعة','علبة','كيس'];
 const ALL=['income','expense','sale','purchase','transfer'];
 const allowed=()=>ctx==='home'?['income','expense']:ctx==='invest'?['sale','purchase','expense']:ALL;
+const r2=n=>Math.round(n*100)/100;
 
 const accName=id=>(DB.s.accounts.find(a=>a.id===id)||{}).name||'—';
 const prodName=id=>(DB.s.products.find(p=>p.id===id)||{}).name||'منتج محذوف';
@@ -26,6 +27,7 @@ const itemList=()=>{
   const used=DB.s.tx.filter(t=>t.type==='expense'&&(!ctx||t.sector===ctx)).map(t=>t.category);
   return [...new Set([...used,...base])].map(c=>`<option value="${esc(c)}">`).join('');
 };
+const supList=()=>[...new Set(DB.s.tx.filter(t=>t.supplier).map(t=>t.supplier))].map(s=>`<option value="${esc(s)}">`).join('');
 const stockBroken=()=>DB.s.products.some(p=>E.stock(p.id)<-1e-9);
 
 /* آخر سعر وحدة دُفع لهذا الصنف (وبنفس الوحدة إذا انحددت) */
@@ -60,7 +62,7 @@ function dayLabel(ds){
 }
 
 /* ===== حالة الواجهة ===== */
-const UI={tab:{home:'all',invest:'all'},lim:{home:30,invest:30},pq:'',pAll:false};
+const UI={tab:{home:'all',invest:'all'},lim:{home:30,invest:30,all:10},q:{home:'',invest:'',all:''},pq:'',pAll:false,dAll:false,ex:'',sp:false};
 
 /* ===== فلتر الفترة ===== */
 const PER={v:localStorage.getItem('mali_per')||'',from:localStorage.getItem('mali_pf')||'',to:localStorage.getItem('mali_pt')||''};
@@ -117,23 +119,56 @@ function periodBar(){
   return `<div class="fbar"><label>📅 الفترة<select onchange="setPeriod(this.value)">${h}</select></label>${r?`<div class="rng"><label>من<input type="date" value="${r.from}" onchange="setRange('from',this.value)"></label><label>إلى<input type="date" value="${r.to}" onchange="setRange('to',this.value)"></label></div>`:''}</div>`;
 }
 
+/* ===== البحث في العمليات ===== */
+const norm=s=>String(s).toLowerCase().replace(/[\u064B-\u0652]/g,'').replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي');
+function txHay(t){
+  const rp=t.type==='debtpay'?DB.s.tx.find(x=>x.id===t.ref):null;
+  return norm([TYPES[t.type][1],t.category,t.productId?prodName(t.productId):'',rp?prodName(rp.productId):'',rp?rp.supplier:'',t.supplier,t.note,t.qtyText,accName(t.account),t.toAccount?accName(t.toAccount):'',SECT[t.sector],t.credit?'بالدين دين':'',String(t.amount),t.date,dayLabel(t.date)].filter(Boolean).join(' '));
+}
+function qFilter(list,q){
+  const w=norm(q).trim().split(/\s+/).filter(Boolean);
+  if(!w.length)return list;
+  return list.filter(t=>{const h=txHay(t);return w.every(x=>h.includes(x))});
+}
+const SEARCH_PH='🔍 ابحث (صنف، منتج، مورّد، ملاحظة، مبلغ، يوم...)';
+
 /* ===== التبويبات ===== */
 const TABS={
   home:[['all','الكل',null],['income','إيراد',['income']],['expense','مصروف',['expense']],['transfer','تحويل',['transfer']]],
   invest:[['all','الكل',null],['sale','بيع',['sale']],['purchase','شراء',['purchase']],['expense','مصاريف',['expense']],['other','أخرى',['income','transfer','debtpay']]]
 };
-function opsBlock(page){
-  const defs=TABS[page],def=defs.find(d=>d[0]===UI.tab[page])||defs[0],pre=perPrefix();
-  const list=DB.s.tx.filter(t=>(t.sector===page||t.toSector===page)&&E.inP(t.date,pre)&&(!def[2]||def[2].includes(t.type)));
-  const showSum=def[2]&&def[2].length===1&&def[2][0]!=='transfer';
+function opsList(page){
+  const defs=TABS[page],def=defs.find(d=>d[0]===UI.tab[page])||defs[0],pre=perPrefix(),q=(UI.q[page]||'').trim();
+  let list=DB.s.tx.filter(t=>(t.sector===page||t.toSector===page)&&(!def[2]||def[2].includes(t.type))&&(q||E.inP(t.date,pre)));
+  if(q)list=qFilter(list,q);
+  const single=def[2]&&def[2].length===1&&def[2][0]!=='transfer';
   const total=list.reduce((s,t)=>s+t.amount,0);
+  let head='';
+  if(q)head=`<div class="tsum"><span>${list.length} نتيجة · كل الفترات</span>${single?`<b>${fmt(total)}</b>`:''}</div>`;
+  else if(single)head=`<div class="tsum"><span>${list.length} عملية</span><b>${fmt(total)}</b></div>`;
+  return head+txList(list,UI.lim[page],page);
+}
+function opsBlock(page){
+  const defs=TABS[page],def=defs.find(d=>d[0]===UI.tab[page])||defs[0];
   return `<div class="tabs">${defs.map(d=>`<button class="tab${d[0]===def[0]?' on':''}" data-tab="${page}:${d[0]}">${d[1]}</button>`).join('')}</div>
-  ${showSum?`<div class="tsum"><span>${list.length} عملية</span><b>${fmt(total)}</b></div>`:''}
-  ${txList(list,UI.lim[page],page)}`;
+  <input class="search" type="search" placeholder="${SEARCH_PH}" value="${esc(UI.q[page])}" oninput="opsSearch('${page}',this.value)">
+  <div id="ops-${page}">${opsList(page)}</div>`;
+}
+function allOpsList(){
+  const q=(UI.q.all||'').trim(),pre=perPrefix();
+  const list=q?qFilter(DB.s.tx,q):DB.s.tx.filter(t=>E.inP(t.date,pre));
+  const head=q?`<div class="tsum"><span>${list.length} نتيجة · كل الفترات</span></div>`:'';
+  return head+txList(list,UI.lim.all,'all');
+}
+function opsSearch(page,v){
+  UI.q[page]=v;
+  UI.lim[page]=page==='all'?(v.trim()?30:10):30;
+  document.getElementById('ops-'+page).innerHTML=page==='all'?allOpsList():opsList(page);
 }
 
 /* قائمة العمليات مجمّعة حسب اليوم مع مجموع كل يوم */
 function txList(list,n=10,page=''){
+  const pg=page&&page!=='all';
   const all=[...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
   if(!all.length)return `<div class="list"><div class="empty">${DB.s.tx.length?'ما في عمليات بهذا الفلتر.':'ما في عمليات بعد. اضغط ＋ لإضافة أول عملية.'}</div></div>`;
   const net={};
@@ -147,12 +182,12 @@ function txList(list,n=10,page=''){
     const qt=t.eqty?`${t.eqty} ${t.eunit||''}`.trim():(t.qtyText||'');
     const rp=t.type==='debtpay'?DB.s.tx.find(x=>x.id===t.ref):null;
     const lbl=t.type==='sale'||t.type==='purchase'?`${TYPES[t.type][1]} ${prodName(t.productId)} × ${t.qty}`
-      :t.type==='debtpay'?'سداد دين'+(rp?' · '+prodName(rp.productId):'')
+      :t.type==='debtpay'?'سداد دين'+(rp?' · '+prodName(rp.productId):'')+(rp&&rp.supplier?' · '+rp.supplier:'')
       :t.type==='transfer'?`${SECT[t.sector]} ← ${SECT[t.toSector]}`
       :t.type==='expense'?`${t.category}${qt?' · '+qt:''}`:t.category;
     let meta=t.type==='transfer'?`${accName(t.account)} ← ${accName(t.toAccount)}`
-      :t.credit?`${page?'':SECT[t.sector]+' · '}بالدين${t.supplier?' · '+t.supplier:''}`
-      :(page?accName(t.account):`${SECT[t.sector]} · ${accName(t.account)}`);
+      :t.credit?`${pg?'':SECT[t.sector]+' · '}بالدين${t.supplier?' · '+t.supplier:''}`
+      :(pg?accName(t.account):`${SECT[t.sector]} · ${accName(t.account)}`);
     if(t.type==='sale')meta+=` · ربح ${fmt(t.amount-(t.cogs||0))}`;
     if(t.type==='expense'&&t.unitPrice&&t.eunit)meta+=` · ${fmt(t.unitPrice)}/${t.eunit}`;
     const sg=t.type==='transfer'||t.credit?'':E.sign(t)>0?'+':'-';
@@ -180,8 +215,9 @@ function openEdit(id){
   setTitle('تعديل عملية');showSheet();drawForm();fillEdit(t);
 }
 function openProduct(id){ctx=null;editId=null;payRef=null;prodId=id;cur='product';setTitle('تعديل منتج');showSheet();drawForm()}
-function openPay(id){ctx=null;editId=null;prodId=null;payRef=id;cur='debtpay';setTitle('سداد دين');showSheet();drawForm()}
-function closeSheet(){$('#sheet').classList.remove('open');document.body.style.overflow='';editId=null;prodId=null;payRef=null}
+function openSup(k){ctx=null;editId=null;prodId=null;payRef=null;supKey=k;UI.ex='';UI.sp=false;cur='supplier';showSheet();drawForm()}
+function closeSheet(){$('#sheet').classList.remove('open');document.body.style.overflow='';editId=null;prodId=null;payRef=null;UI.ex='';UI.sp=false}
+function done(msg){closeSheet();R.render();if(msg)toast(msg)}
 
 /* اختيار الوحدة بالأزرار */
 function setUnit(u,manual){
@@ -198,6 +234,127 @@ function setUnit(u,manual){
   if(manual)f.dataset.touched='1';
 }
 
+/* ===== نافذة المورّد: تسوية المبيعات + تعديل داخل النافذة ===== */
+function supHTML(){
+  setTitle('🤝 '+(supKey||'بدون مورّد'));
+  const ds=E.debts().filter(d=>(d.t.supplier||'')===supKey);
+  const tot=ds.reduce((s,d)=>s+d.t.amount,0),paid=ds.reduce((s,d)=>s+d.paid,0),left=ds.reduce((s,d)=>s+Math.max(0,d.left),0);
+  const soldC=ds.reduce((s,d)=>s+d.soldCost,0),due=ds.reduce((s,d)=>s+d.due,0),stockLeft=Math.max(0,left-due);
+  const pays=DB.s.tx.filter(x=>x.type==='debtpay'&&ds.some(d=>d.t.id===x.ref)).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+
+  /* ربح البيع من هذه الدفعة = مبيعات المنتج بعد خصم ثمن المورّد */
+  const debtRow=d=>{
+    const t=d.t,open=UI.ex===t.id,remQty=Math.max(0,t.qty-d.soldQty);
+    let h=`<div class="row-i${open?' open':''}" data-ex="${t.id}"><span class="ic">📦</span><div class="mid">${esc(prodName(t.productId))} × ${t.qty}<span>${dayLabel(t.date)} · مباع ${r2(d.soldQty)} من ${t.qty}${d.paid>0?' · مسدد '+fmt(d.paid):''}</span></div>${d.left>0.005?(d.due>0.005?`<b class="due">${fmt(d.due)}</b>`:`<b class="neg">${fmt(d.left)}</b>`):'<b class="pos">مسدد ✓</b>'}<span class="chev">‹</span></div>`;
+    if(open)h+=`<div class="ex">
+      <div class="sumbox sm">
+        <div class="stat"><span>سعر الوحدة من المورّد</span><b>${fmt(d.unit)}</b></div>
+        <div class="stat"><span>المباع (${r2(d.soldQty)}) · ثمنه للمورّد</span><b>${fmt(d.soldCost)}</b></div>
+        <div class="stat"><span>مسدد</span><b class="pos">${fmt(d.paid)}</b></div>
+        <div class="stat"><span>مستحق الآن (عن المباع)</span><b class="${d.due>0.005?'due':''}">${fmt(d.due)}</b></div>
+        <div class="stat"><span>باقي بالمخزون (${r2(remQty)}) · لم يُدفع ثمنه بعد</span><b>${fmt(Math.max(0,d.left-d.due))}</b></div>
+      </div>
+      ${d.left>0.005?`<div class="paybox"><div class="row"><label>المبلغ<input name="pa" type="number" step="any" inputmode="decimal" value="${r2(d.due>0.005?d.due:d.left)}"></label><label>من محفظة<select name="pacc">${accOpts()}</select></label></div>
+        <div class="exb"><button type="button" class="btn sm" data-dpay="${t.id}">${d.due>0.005?'💵 سدّد المستحق':'💵 سداد'}</button>${d.due>0.005&&d.left>d.due+0.005?`<button type="button" class="btn sm alt" data-dall1="${t.id}">سداد المتبقي كله</button>`:''}</div></div>`:''}
+      <div class="sh2">تعديل الدين</div>
+      <div class="row"><label>الكمية<input name="dq" type="number" step="any" inputmode="decimal" value="${t.qty}"></label><label>المبلغ الإجمالي<input name="da" type="number" step="any" inputmode="decimal" value="${t.amount}"></label></div>
+      <label>اسم المورّد<input name="ds" list="sups" value="${esc(t.supplier||'')}" autocomplete="off"><datalist id="sups">${supList()}</datalist></label>
+      <div class="exb"><button type="button" class="btn sm" data-dsave="${t.id}">حفظ التعديل</button><button type="button" class="btn sm dng" data-ddel="${t.id}">حذف الدين</button></div>
+    </div>`;
+    return h;
+  };
+  const payRow=x=>{
+    const dt=ds.find(d=>d.t.id===x.ref),open=UI.ex===x.id;
+    let h=`<div class="row-i${open?' open':''}" data-ex="${x.id}"><span class="ic">💵</span><div class="mid">${esc(dt?prodName(dt.t.productId):'دين')}<span>${dayLabel(x.date)} · ${esc(accName(x.account))}</span></div><b>${fmt(x.amount)}</b><span class="chev">‹</span></div>`;
+    if(open)h+=`<div class="ex"><div class="row"><label>المبلغ<input name="xa" type="number" step="any" inputmode="decimal" value="${x.amount}"></label><label>المحفظة<select name="xacc">${opts(DB.s.accounts.map(a=>[a.id,a.name]),x.account)}</select></label></div>
+      <div class="exb"><button type="button" class="btn sm" data-psave="${x.id}">حفظ</button><button type="button" class="btn sm dng" data-pdel="${x.id}">حذف السداد</button></div></div>`;
+    return h;
+  };
+
+  const settle=left>0.005
+    ?(due>0.005
+      ?(UI.sp
+        ?`<div class="paybox"><div class="sh2">سداد المستحق · بيتوزّع على الديون من الأقدم</div>
+          <div class="row"><label>المبلغ<input name="sa" type="number" step="any" inputmode="decimal" value="${r2(due)}"></label><label>من محفظة<select name="sacc">${accOpts()}</select></label></div>
+          <div class="exb"><button type="button" class="btn sm" data-spgo>تأكيد السداد</button><button type="button" class="btn sm alt" data-spt>إلغاء</button></div></div>`
+        :`<button type="button" class="btn" data-spt>💵 سدّد المستحق · ${fmt(due)}</button>`)
+      :'<div class="okbox">لا يوجد مستحق الآن. كل ما بعت منه مسدد ✓</div>')
+    :'<div class="okbox">✅ ما في دين متبقي</div>';
+
+  return `<div class="sumbox">
+    <div class="stat"><span>إجمالي ما أخذته بالدين</span><b>${fmt(tot)}</b></div>
+    <div class="stat"><span>ثمن المباع منه</span><b>${fmt(soldC)}</b></div>
+    <div class="stat"><span>المسدد</span><b class="pos">${fmt(paid)}</b></div>
+    <div class="stat sum"><span>مستحق الآن (عن المباع)</span><b class="${due>0.005?'due':'pos'}">${fmt(due)}</b></div>
+    <div class="stat"><span>بضاعة بالمخزون (لم تُدفع بعد)</span><b>${fmt(stockLeft)}</b></div>
+    <div class="note">ما انباع بتدفع ثمنه للمورّد، وربحك هو الفرق بين سعر بيعك وسعره. وما لم ينبع بعد بيضل دين مؤجل.</div>
+  </div>
+  ${settle}
+  <div class="sh">الدفعات · اضغط على أي دفعة لتفاصيلها وتعديلها</div>
+  <div class="list">${ds.map(debtRow).join('')}</div>
+  ${pays.length?`<div class="sh">السدادات · اضغط للتعديل أو الحذف</div><div class="list">${pays.map(payRow).join('')}</div>`:''}`;
+}
+
+/* بعد أي تعديل داخل نافذة المورّد: نحدّث الصفحة والنافذة معاً */
+function supRefresh(){
+  R.render();
+  if(!E.debts().some(d=>(d.t.supplier||'')===supKey)){closeSheet();return}
+  drawForm();
+}
+function saveDebt(id){
+  const f=$('#form'),t=DB.s.tx.find(x=>x.id===id);if(!t)return;
+  const q=+f.elements.dq.value,a=+f.elements.da.value,s=f.elements.ds.value.trim();
+  if(!(q>0&&a>0))return toast('أدخل الكمية والمبلغ',1);
+  const paid=E.paidOn(id);
+  if(a<paid-0.005)return toast('المبلغ أقل من المسدد ('+fmt(paid)+')',1);
+  const bak=JSON.parse(JSON.stringify(t)),pb=DB.s.products.find(p=>p.id===t.productId);
+  t.qty=q;t.amount=a;t.unit=a/q;t.supplier=s;
+  if(stockBroken()){Object.assign(t,bak);return toast('الكمية بتخلي المخزون سالب',1)}
+  if(pb)pb.cost=t.unit;
+  DB.save();supKey=s;UI.ex='';supRefresh();toast('تم التعديل ✓');
+}
+function payDebt(id,all){
+  const f=$('#form'),d=E.debts().find(x=>x.t.id===id);if(!d)return;
+  const a=all?d.left:+f.elements.pa.value;
+  if(!(a>0))return toast('أدخل مبلغ السداد',1);
+  if(a>d.left+0.005)return toast('المبلغ أكبر من المتبقي ('+fmt(d.left)+')',1);
+  DB.s.tx.push({id:DB.id(),type:'debtpay',sector:'invest',ref:id,amount:r2(a),account:f.elements.pacc.value,date:today(),note:''});
+  DB.save();UI.ex='';supRefresh();toast('تم السداد ✓');
+}
+function delDebt(id){
+  const has=DB.s.tx.some(t=>t.type==='debtpay'&&t.ref===id);
+  if(!has&&!confirm('حذف هذا الدين؟ بيرجع المخزون كأنه ما انشترى.'))return;
+  if(delTx(id)){UI.ex='';supRefresh();toast('تم حذف الدين')}
+}
+function savePay(id){
+  const f=$('#form'),t=DB.s.tx.find(x=>x.id===id);if(!t)return;
+  const a=+f.elements.xa.value;
+  if(!(a>0))return toast('أدخل مبلغاً أكبر من صفر',1);
+  const d=E.debts().find(x=>x.t.id===t.ref);
+  if(d&&a>d.left+t.amount+0.005)return toast('المبلغ أكبر من المتبقي من الدين',1);
+  t.amount=a;t.account=f.elements.xacc.value;
+  DB.save();UI.ex='';supRefresh();toast('تم التعديل ✓');
+}
+function delPay(id){
+  if(!confirm('حذف هذا السداد؟ المبلغ بيرجع لمحفظتك والدين بيزيد.'))return;
+  DB.s.tx=DB.s.tx.filter(x=>x.id!==id);
+  DB.save();UI.ex='';supRefresh();toast('تم حذف السداد');
+}
+/* تسوية المورّد: يسدد المستحق (عن المباع) موزّعاً من الأقدم للأحدث */
+function paySupGo(){
+  const f=$('#form');let amt=+f.elements.sa.value;
+  const ds=E.debts().filter(d=>(d.t.supplier||'')===supKey&&d.left>0.005);
+  const due=ds.reduce((s,d)=>s+d.due,0),left=ds.reduce((s,d)=>s+d.left,0);
+  if(!(amt>0))return toast('أدخل مبلغ السداد',1);
+  if(amt>left+0.005)return toast('المبلغ أكبر من كل المتبقي ('+fmt(left)+')',1);
+  /* أولاً المستحق عن المباع، وما زاد يذهب لباقي الدين */
+  const plan=ds.map(d=>({d,x:0}));
+  for(const p of plan){const t=Math.min(p.d.due,amt);p.x+=t;amt-=t}
+  for(const p of plan){if(amt<=0.004)break;const t=Math.min(p.d.left-p.x,amt);p.x+=t;amt-=t}
+  plan.forEach(p=>{if(p.x>0.004)DB.s.tx.push({id:DB.id(),type:'debtpay',sector:'invest',ref:p.d.t.id,amount:r2(p.x),account:f.elements.sacc.value,date:today(),note:''})});
+  DB.save();UI.sp=false;supRefresh();toast('تم تسجيل السداد ✓');
+}
+
 function drawForm(){
   const t=cur;
   if(t==='product'){
@@ -205,6 +362,7 @@ function drawForm(){
     let rp=0,sold=0;
     DB.s.tx.forEach(x=>{if(x.type==='sale'&&x.productId===p.id){rp+=x.amount-(x.cogs||0);sold+=x.qty}});
     const dv=E.debts().filter(d=>d.t.productId===p.id).reduce((s,d)=>s+Math.max(0,d.left),0);
+    const dd=E.debts().filter(d=>d.t.productId===p.id).reduce((s,d)=>s+d.due,0);
     $('#form').innerHTML=`<label>اسم المنتج<input name="pname" value="${esc(p.name)}"></label>
     <div class="row"><label>سعر التكلفة (للوحدة)<input name="cost" type="number" step="any" inputmode="decimal" value="${p.cost}"></label><label>سعر البيع (للوحدة)<input name="price" type="number" step="any" inputmode="decimal" value="${p.price}"></label></div>
     <div class="row"><label>الكمية المتوفرة<input name="stock" type="number" step="any" min="0" inputmode="decimal" value="${st}"></label><label>الحد الأدنى للتنبيه<input name="min" type="number" step="any" inputmode="decimal" value="${p.min||0}"></label></div>
@@ -213,12 +371,13 @@ function drawForm(){
       <div class="stat"><span>هامش الربح</span><b id="pm">—</b></div>
       <div class="stat"><span>ربح متوقع من المتبقي</span><b id="pe">—</b></div>
       <div class="stat"><span>الربح المتحقق (بيع ${sold})</span><b class="${rp>=0?'pos':'neg'}">${rp>0?'+':''}${fmt(rp)}</b></div>
-      ${dv>0.005?`<div class="stat"><span>دين عليك لهذا المنتج</span><b class="neg">${fmt(dv)}</b></div>`:''}
+      ${dv>0.005?`<div class="stat"><span>دين عليك لهذا المنتج</span><b class="neg">${fmt(dv)}</b></div><div class="stat"><span>منه مستحق الآن (عن المباع)</span><b class="due">${fmt(dd)}</b></div>`:''}
       <div class="note">تعديل الكمية = جرد وتصحيح للمخزون. وتغيير السعر لا يغيّر أرباح المبيعات السابقة.</div>
     </div>
     <div class="savebar"><button class="btn">حفظ</button><button type="button" class="btn alt" style="color:var(--danger);margin-top:8px" data-delprod>حذف المنتج</button></div>`;
     sync();return;
   }
+  if(t==='supplier'){$('#form').innerHTML=supHTML();return}
   const prods=DB.s.products.map(p=>[p.id,p.name]);
   const types=allowed();
   let h=(editId||t==='debtpay')?'':`<div class="chips" style="grid-template-columns:repeat(${types.length},1fr)">${types.map(k=>`<button type="button" class="chip${k===t?' on':''}" data-type="${k}"><span>${TYPES[k][0]}</span>${TYPES[k][1]}</button>`).join('')}</div>`;
@@ -255,7 +414,7 @@ function drawForm(){
     <div class="row"><label>الكمية<input name="qty" type="number" step="any" min="0" inputmode="decimal" placeholder="الكمية"></label><label>المبلغ الإجمالي<input name="amount" type="number" step="any" min="0" inputmode="decimal" placeholder="الإجمالي"></label></div>
     <div class="total">تكلفة الوحدة: <b id="tot">—</b></div>
     <label class="chk"><input type="checkbox" name="credit"><span>اشتريتها بالدين (لم أدفع بعد)</span></label>
-    <label id="supl" style="display:none">اسم المورّد (اختياري)<input name="supplier" autocomplete="off"></label>
+    <label id="supl" style="display:none">اسم المورّد (اختياري)<input name="supplier" list="sups" autocomplete="off"><datalist id="sups">${supList()}</datalist></label>
     <div id="accl"><label>الحساب الذي دُفع منه<select name="account">${accOpts()}</select></label></div>`;
   }else if(t==='debtpay'){
     const d=E.debts().find(x=>x.t.id===payRef);
@@ -265,7 +424,7 @@ function drawForm(){
       <div class="stat"><span>المسدد</span><b>${fmt(d.paid)}</b></div>
       <div class="stat"><span>المتبقي</span><b class="neg">${fmt(d.left)}</b></div>
     </div>
-    <label>مبلغ السداد<input name="amount" type="number" step="any" min="0" inputmode="decimal" value="${editId?'':Math.round(Math.max(0,d.left)*100)/100}"></label>
+    <label>مبلغ السداد<input name="amount" type="number" step="any" min="0" inputmode="decimal" value="${editId?'':r2(Math.max(0,d.left))}"></label>
     <label>الحساب الذي دُفع منه<select name="account">${accOpts()}</select></label>`;
   }else{
     h+=`<div class="row"><label>من قسم<select name="sector">${opts([['home',SECT.home],['invest',SECT.invest]])}</select></label><label>إلى قسم<select name="toSector">${opts([['invest',SECT.invest],['home',SECT.home]])}</select></label></div>
@@ -307,7 +466,7 @@ function fillEdit(t){
 
 function sync(){
   const f=$('#form'),g=n=>f.elements[n];
-  if(!f.elements.length)return;
+  if(!f.elements.length||cur==='supplier')return;
   if(cur==='product'){
     const c=+g('cost').value||0,pr=+g('price').value||0,s=+g('stock').value||0,u=pr-c;
     const set=(id,tx,cl)=>{const el=$(id);el.textContent=tx;el.className=cl};
@@ -368,6 +527,7 @@ function sync(){
 function submitForm(e){
   e.preventDefault();
   if(cur==='product')return saveProduct();
+  if(cur==='supplier')return;
   const f=$('#form'),v=n=>f.elements[n]?f.elements[n].value:'';
   const t={type:cur,date:v('date')||today(),note:v('note'),account:v('account')};
   const qty=+v('qty');
@@ -402,7 +562,7 @@ function submitForm(e){
       const paid=old?E.paidOn(old.id):0;
       if(paid>0){
         if(!t.credit)return toast('عليه سدادات، احذفها أولاً',1);
-        if(t.amount<paid-0.005)return toast('المبلغ أقل من المسدد',1);
+        if(t.amount<paid-0.005)return toast('المبلغ أقل من المسدد ('+fmt(paid)+')',1);
       }
     }
     if(pid==='__new'){
@@ -428,7 +588,7 @@ function submitForm(e){
   if(p&&cur==='purchase')p.cost=t.unit;
   if(p&&cur==='sale')p.price=t.unit;
   DB.save();
-  const was=editId;closeSheet();R.render();toast(was?'تم تعديل العملية ✓':'تم الحفظ ✓');
+  done(editId?'تم تعديل العملية ✓':'تم الحفظ ✓');
 }
 
 function saveProduct(){
@@ -444,22 +604,38 @@ function saveProduct(){
   DB.save();closeSheet();R.render();toast('تم حفظ المنتج ✓');
 }
 
+/* حذف عملية. إذا كانت شراء بالدين وعليها سدادات، نسأل ونحذفها معها */
 function delTx(id){
-  const i=DB.s.tx.findIndex(x=>x.id===id),old=DB.s.tx[i];
-  if(old.type==='purchase'&&old.credit&&E.paidOn(id)>0){toast('على هذا الدين سدادات، احذفها أولاً',1);return false}
-  DB.s.tx.splice(i,1);
-  if(stockBroken()){DB.s.tx.splice(i,0,old);toast('ما بتنحذف: بتخلي مخزون منتج سالب. احذف عمليات البيع المرتبطة أولاً',1);return false}
+  const old=DB.s.tx.find(x=>x.id===id);if(!old)return false;
+  const pays=old.type==='purchase'?DB.s.tx.filter(t=>t.type==='debtpay'&&t.ref===id):[];
+  if(pays.length){
+    const s=pays.reduce((a,t)=>a+t.amount,0);
+    if(!confirm(`على هذا الدين ${pays.length} سدادات (${fmt(s)}). سيتم حذفها معه وإرجاع المبلغ لمحافظك. متأكد؟`))return false;
+  }
+  const bak=DB.s.tx.slice();
+  DB.s.tx=DB.s.tx.filter(t=>t.id!==id&&!(t.type==='debtpay'&&t.ref===id));
+  if(stockBroken()){DB.s.tx=bak;toast('ما بتنحذف: بتخلي مخزون منتج سالب. احذف عمليات البيع المرتبطة أولاً',1);return false}
   DB.save();return true;
 }
 
 document.addEventListener('click',e=>{
   if(e.target.id==='fab')return openSheet();
-  const c=e.target.closest('[data-edit],[data-prod],[data-pay],[data-type],[data-close],[data-date],[data-deltx],[data-delprod],[data-unit],[data-tab],[data-per],[data-more],[data-pall]');
+  const c=e.target.closest('[data-ex],[data-dsave],[data-ddel],[data-dpay],[data-dall1],[data-psave],[data-pdel],[data-spt],[data-spgo],[data-edit],[data-prod],[data-sup],[data-dall],[data-type],[data-close],[data-date],[data-deltx],[data-delprod],[data-unit],[data-tab],[data-per],[data-more],[data-pall]');
   if(!c)return;
   const d=c.dataset;
-  if(d.edit)openEdit(d.edit);
+  if(d.ex!==undefined){UI.ex=UI.ex===d.ex?'':d.ex;drawForm()}
+  else if(d.dsave)saveDebt(d.dsave);
+  else if(d.ddel)delDebt(d.ddel);
+  else if(d.dpay)payDebt(d.dpay,false);
+  else if(d.dall1)payDebt(d.dall1,true);
+  else if(d.psave)savePay(d.psave);
+  else if(d.pdel)delPay(d.pdel);
+  else if('spt' in d){UI.sp=!UI.sp;drawForm()}
+  else if('spgo' in d)paySupGo();
+  else if(d.edit)openEdit(d.edit);
   else if(d.prod)openProduct(d.prod);
-  else if(d.pay)openPay(d.pay);
+  else if('sup' in d)openSup(d.sup.slice(1));
+  else if('dall' in d){UI.dAll=!UI.dAll;R.render()}
   else if(d.type){cur=d.type;drawForm()}
   else if('close' in d)closeSheet();
   else if(d.tab){const [pg,k]=d.tab.split(':');UI.tab[pg]=k;UI.lim[pg]=30;R.render()}
@@ -477,7 +653,7 @@ document.addEventListener('click',e=>{
     sync();
   }
   else if('deltx' in d){
-    if(confirm('حذف هذه العملية؟ ستتحدث الأرصدة والمخزون والأرباح تلقائياً.')&&delTx(editId)){closeSheet();R.render();toast('تم حذف العملية')}
+    if(confirm('حذف هذه العملية؟ ستتحدث الأرصدة والمخزون والأرباح تلقائياً.')&&delTx(editId))done('تم حذف العملية');
   }
   else if('delprod' in d){
     if(DB.s.tx.some(t=>t.productId===prodId))return toast('المنتج عليه عمليات، احذفها أولاً',1);

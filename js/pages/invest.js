@@ -1,4 +1,4 @@
-const PLIM=6;
+const PLIM=6,DLIM=3;
 function prodHTML(){
   const q=(UI.pq||'').trim().toLowerCase();
   const low=x=>x.q<=(x.p.min||0);
@@ -17,11 +17,26 @@ function prodHTML(){
 }
 function prodSearch(v){UI.pq=v;document.getElementById('plist').innerHTML=prodHTML()}
 
+/* الديون مجمّعة حسب المورّد */
+function supGroups(){
+  const m={};
+  E.debts().filter(d=>d.left>0.005).forEach(d=>{
+    const k=d.t.supplier||'';
+    const g=m[k]||(m[k]={k,n:0,left:0,first:d.t.date});
+    g.n++;g.left+=d.left;if(d.t.date<g.first)g.first=d.t.date;
+  });
+  return Object.values(m).sort((a,b)=>b.left-a.left);
+}
 function debtsHTML(){
-  const ds=E.debts().filter(d=>d.left>0.005);
-  if(!ds.length)return '';
-  const tot=ds.reduce((s,d)=>s+d.left,0);
-  return `<h3>🤝 ديون عليك · <span class="neg">${fmt(tot)}</span></h3><div class="list">`+ds.map(d=>`<div class="row-i"><span class="ic">🤝</span><div class="mid">${esc(prodName(d.t.productId))} × ${d.t.qty}${d.t.supplier?' · '+esc(d.t.supplier):''}<span>${dayLabel(d.t.date)} · ${d.paid>0?'مسدد '+fmt(d.paid)+' من '+fmt(d.t.amount):'الدين '+fmt(d.t.amount)}</span></div><b class="neg">${fmt(d.left)}</b><button class="paybtn" data-pay="${d.t.id}">سداد</button></div>`).join('')+'</div>';
+  const gs=supGroups();
+  if(!gs.length)return '';
+  const tot=gs.reduce((s,g)=>s+g.left,0);
+  const lim=(UI.dAll||gs.length<=DLIM+1)?gs.length:DLIM;
+  const rows=gs.slice(0,lim).map(g=>`<div class="row-i" data-sup="#${esc(g.k)}"><span class="ic">🤝</span><div class="mid">${esc(g.k||'بدون مورّد')}<span>${g.n} ${g.n===1?'دين':'ديون'} · منذ ${sd(g.first)}</span></div><b class="neg">${fmt(g.left)}</b><span class="chev">‹</span></div>`).join('');
+  let btn='';
+  if(gs.length>lim)btn=`<button class="btn alt" data-dall>عرض كل الموردين (${gs.length})</button>`;
+  else if(UI.dAll&&gs.length>DLIM+1)btn=`<button class="btn alt" data-dall>عرض أقل</button>`;
+  return `<h3>🤝 ديون عليك · <span class="neg">${fmt(tot)}</span> · ${gs.length} ${gs.length===1?'مورّد':'موردين'}</h3><div class="list">${rows}</div>${btn}`;
 }
 
 function flowHTML(){
@@ -50,6 +65,7 @@ function flowHTML(){
 R.reg('invest','الاستثمار',()=>{
   const b=E.bal(),pre=perPrefix(),m=E.period(pre).invest;
   const n=DB.s.products.length,lowN=DB.s.products.filter(p=>E.stock(p.id)<=(p.min||0)).length;
+  const gross=m.sales-m.cogs;
   return `<section class="hero"><small>رصيد الاستثمار (نقد)</small><h1>${fmt(b.invest)}</h1></section>
   ${periodBar()}
   <div class="grid">
@@ -58,7 +74,9 @@ R.reg('invest','الاستثمار',()=>{
     <div class="card"><small>المبيعات</small><b>${fmt(m.sales)}</b></div>
     <div class="card"><small>تكلفة المباع</small><b>${fmt(m.cogs)}</b></div>
     <div class="card"><small>المصاريف</small><b class="neg">${fmt(m.expenses)}</b></div>
-    <div class="card"><small>صافي الربح</small><b class="${m.profit>=0?'pos':'neg'}">${fmt(m.profit)}</b></div>
+    <div class="card"><small>هامش الربح</small><b>${m.sales>0?Math.round(m.profit/m.sales*100)+'%':'—'}</b></div>
+    <div class="card hl"><small>ربح المبيعات (قبل المصاريف)</small><b class="${gross>=0?'pos':'neg'}">${fmt(gross)}</b></div>
+    <div class="card hl"><small>صافي الربح (بعد المصاريف)</small><b class="${m.profit>=0?'pos':'neg'}">${fmt(m.profit)}</b></div>
   </div>
   ${flowHTML()}
   ${debtsHTML()}

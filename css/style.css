@@ -234,3 +234,30 @@ main{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 .det .list{border:0;border-radius:0;border-top:1px solid var(--line)}
 .det .gap{height:8px;background:var(--bg)}
 .det .nt{font-size:12px;color:var(--t2);padding:10px 14px;border-top:1px solid var(--line);line-height:1.7}
+
+/* ===== v13: نافذة المورّد ===== */
+.sh{font-size:13px;color:var(--t2);font-weight:600;margin:16px 0 6px}
+#form>.btn{margin-bottom:4px}
+.row-i .paybtn{margin-inline-start:2px}
+
+/* ===== v14: تعديل داخل النافذة + بطاقات الربح ===== */
+.card.hl{background:#F0FDF4;border-color:#BBF7D0}
+.row-i.open{background:var(--bg)}
+.row-i.open .chev{transform:rotate(-90deg)}
+.row-i[data-ex]{cursor:pointer}
+.ex{padding:12px 14px;background:var(--bg);border-bottom:1px solid var(--line)}
+.ex label{margin-bottom:10px}
+.ex input,.ex select{background:#fff;min-height:44px}
+.exb{display:flex;gap:8px;margin:2px 0 4px}
+.exb .btn{flex:1;margin:0}
+.btn.sm{min-height:44px;padding:9px 12px;font-size:14px;margin:0}
+.btn.dng{background:#fff;color:var(--danger);border:1px solid var(--line)}
+.paybox{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0 2px}
+.paybox .btn.sm{width:100%}
+.sh2{font-size:13px;color:var(--t2);font-weight:600;margin-bottom:8px}
+.tabs+.search{margin-top:0}
+
+/* ===== v20 ===== */
+.row-i[data-action]{cursor:pointer}
+.row-i[data-action]:active{background:var(--bg)}
+button[data-action]{touch-action:manipulation}

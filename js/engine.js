@@ -29,14 +29,38 @@ const E={
   },
   inventoryValue(){return DB.s.products.reduce((s,p)=>s+Math.max(0,this.stock(p.id))*p.cost,0)},
 
-  /* الديون: مشتريات بالدين، والمتبقي = المبلغ - السدادات */
+  /* ===== الديون ===== */
   paidOn(id){return DB.s.tx.filter(t=>t.type==='debtpay'&&t.ref===id).reduce((s,t)=>s+t.amount,0)},
+
+  /* توزيع الكميات المباعة على الديون من الأقدم للأحدث (FIFO لكل منتج) */
+  soldMap(){
+    const res={},byP={};
+    DB.s.tx.filter(t=>t.type==='purchase'&&t.credit).forEach(t=>{(byP[t.productId]=byP[t.productId]||[]).push(t);res[t.id]=0});
+    for(const pid in byP){
+      const ps=byP[pid].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
+      const p=DB.s.products.find(x=>x.id===pid);
+      let sold=0;
+      DB.s.tx.forEach(t=>{if(t.type==='sale'&&t.productId===pid)sold+=t.qty});
+      /* الرصيد الافتتاحي (بضاعة قديمة مدفوعة) تُباع أولاً */
+      sold=Math.max(0,sold-Math.max(0,+(p&&p.qty0)||0));
+      for(const t of ps){const s=Math.min(t.qty,sold);res[t.id]=s;sold-=s}
+    }
+    return res;
+  },
+
+  /* paid المسدد، left المتبقي كله، soldQty المباع، soldCost ثمن المباع، due المستحق الآن */
   debts(){
+    const sm=this.soldMap();
     return DB.s.tx.filter(t=>t.type==='purchase'&&t.credit)
-      .map(t=>{const paid=this.paidOn(t.id);return {t,paid,left:t.amount-paid}})
-      .sort((a,b)=>a.t.date.localeCompare(b.t.date));
+      .map(t=>{
+        const paid=this.paidOn(t.id),soldQty=sm[t.id]||0,unit=t.qty>0?t.amount/t.qty:0;
+        const soldCost=soldQty*unit,left=t.amount-paid;
+        return {t,paid,left,soldQty,soldCost,unit,due:Math.max(0,Math.min(left,soldCost-paid))};
+      })
+      .sort((a,b)=>a.t.date.localeCompare(b.t.date)||a.t.id.localeCompare(b.t.id));
   },
   debtTotal(){return this.debts().reduce((s,d)=>s+Math.max(0,d.left),0)},
+  dueTotal(){return this.debts().reduce((s,d)=>s+d.due,0)},
 
   /* تفصيل رصيد الاستثمار النقدي */
   flow(){
