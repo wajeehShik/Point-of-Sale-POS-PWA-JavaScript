@@ -1,19 +1,75 @@
+// استيراد مخزن البيانات المسؤول عن حفظ بيانات التطبيق وتعديلها
+// واستيراد newId لإنشاء معرّف فريد لكل محفظة جديدة
 import { store, newId } from '../data/store.js';
 
-export const setCycleDay = day => store.transact(s => { s.cycleDay = +day; });
+/**
+ * تغيير يوم بداية الدورة المالية.
+ *
+ * day: رقم اليوم الذي تبدأ عنده الدورة المالية.
+ */
+export const setCycleDay = day =>
+  store.transact(s => {
+    // تحويل القيمة المدخلة إلى رقم وحفظها في إعدادات البيانات
+    s.cycleDay = +day;
+  });
 
+/**
+ * إضافة محفظة أو حساب مالي جديد.
+ *
+ * name: اسم المحفظة، مثل نقداً أو PalPay أو Jawwal Pay.
+ */
 export function addAccount(name) {
+  // تنفيذ الإضافة داخل معاملة في مخزن البيانات
   return store.transact(s => {
+
+    // إزالة المسافات الزائدة من اسم المحفظة
     const n = (name || '').trim();
+
+    // منع إضافة محفظة إذا كان الاسم فارغاً
     if (!n) return { error: 'اكتب اسم المحفظة' };
-    s.accounts.push({ id: newId(), name: n });
+
+    // إضافة المحفظة إلى قائمة الحسابات
+    s.accounts.push({
+      id: newId(), // إنشاء معرّف فريد للمحفظة
+      name: n      // حفظ اسم المحفظة
+    });
   });
 }
 
-export const clearTransactions = () => store.transact(s => { s.tx = []; });
+/**
+ * حذف جميع العمليات المالية المسجلة.
+ *
+ * ملاحظة: هذا لا يحذف المنتجات أو الحسابات،
+ * بل يفرّغ قائمة العمليات فقط.
+ */
+export const clearTransactions = () =>
+  store.transact(s => {
+    s.tx = [];
+  });
+
+/**
+ * إعادة ضبط بيانات التطبيق بالكامل.
+ *
+ * طريقة إعادة الضبط الفعلية تعتمد على تنفيذ store.reset().
+ */
 export const resetAll = () => store.reset();
 
+/**
+ * استيراد نسخة احتياطية من ملف نصي بصيغة JSON.
+ *
+ * text: محتوى الملف الاحتياطي بعد قراءته كنص.
+ */
 export function importBackup(text) {
-  try { return store.replace(JSON.parse(text)); }
-  catch { return { error: 'الملف غير صالح' }; }
+  try {
+    // تحويل النص إلى كائن JavaScript
+    const data = JSON.parse(text);
+
+    // استبدال بيانات التطبيق الحالية بالبيانات المستوردة
+    // التحقق من توافق البيانات يعتمد على تنفيذ store.replace()
+    return store.replace(data);
+
+  } catch {
+    // إرجاع رسالة خطأ إذا فشل تحليل الملف أو حدث خطأ أثناء الاستيراد
+    return { error: 'الملف غير صالح' };
+  }
 }

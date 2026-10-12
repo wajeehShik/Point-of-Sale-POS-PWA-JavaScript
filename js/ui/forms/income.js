@@ -1,28 +1,100 @@
+// استيراد مصادر الدخل الافتراضية لكل قسم مالي
 import { INCOME_SOURCES } from '../../core/constants.js';
-import { opts, sectorField, numberField, accountField, val, setValue } from './fields.js';
 
-/* نعيد بناء المصادر فقط لما يتغير القسم حتى ما يضيع اختيار المستخدم */
+// استيراد أدوات إنشاء الحقول والقوائم، وقراءة القيم وتعبئتها
+import {
+  opts,
+  sectorField,
+  numberField,
+  accountField,
+  val,
+  setValue
+} from './fields.js';
+
+/**
+ * مزامنة قائمة مصادر الدخل مع القسم المالي المحدد.
+ *
+ * f: نموذج إضافة أو تعديل الإيراد.
+ *
+ * الفكرة:
+ * إذا غيّر المستخدم القسم، نعيد بناء قائمة مصادر الدخل لتناسب القسم الجديد.
+ * وإذا لم يتغير القسم، لا نعيد بناء القائمة حتى لا نفقد اختيار المستخدم.
+ */
 function syncSource(f) {
-  const c = f.elements.category, sector = f.elements.sector.value;
+  // الوصول إلى قائمة مصدر الدخل
+  const c = f.elements.category;
+
+  // قراءة القسم المالي المختار حالياً
+  const sector = f.elements.sector.value;
+
+  // إذا كانت القائمة مبنية بالفعل للقسم نفسه، لا داعي لتحديثها
   if (c.dataset.sec === sector) return;
-  c.innerHTML = opts(INCOME_SOURCES[sector].map(x => [x, x]));
+
+  // جلب مصادر الدخل الخاصة بالقسم وتحويلها إلى خيارات HTML
+  // مثال: [['راتب', 'راتب'], ['عمل حر', 'عمل حر']]
+  c.innerHTML = opts(
+    INCOME_SOURCES[sector].map(x => [x, x])
+  );
+
+  // حفظ القسم الذي بُنيت القائمة على أساسه
+  // حتى نعرف لاحقاً هل نحتاج إلى إعادة بنائها
   c.dataset.sec = sector;
 }
 
+/**
+ * إعداد نموذج إضافة إيراد أو تعديله.
+ */
 export default {
-  render: env => sectorField(env)
+
+  // إنشاء واجهة النموذج
+  render: env =>
+    // حقل القسم المالي، وقد يكون مخفياً إذا فُتح النموذج من قسم محدد
+    sectorField(env)
+
+    // قائمة اختيار مصدر الدخل، وتُملأ خياراتها بواسطة syncSource()
     + '<label>مصدر الدخل<select name="category"></select></label>'
+
+    // حقل إدخال مبلغ الإيراد
     + numberField('amount', 'المبلغ', 'المبلغ')
+
+    // قائمة اختيار الحساب الذي استقبل مبلغ الإيراد
     + accountField(env.state, 'الحساب الذي دخلت إليه'),
 
+  // تحديث مصادر الدخل عند الحاجة، مثل تغيير القسم
   sync: syncSource,
 
+  /**
+   * تعبئة النموذج عند تعديل إيراد موجود.
+   *
+   * f: النموذج.
+   * t: بيانات الإيراد القديم.
+   */
   fill(f, t) {
-    setValue(f, 'sector', t.sector); syncSource(f);
+    // تحديد القسم الذي سُجل فيه الإيراد
+    setValue(f, 'sector', t.sector);
+
+    // إعادة بناء قائمة مصادر الدخل لتناسب القسم المحدد
+    syncSource(f);
+
+    // تحديد مصدر الدخل القديم في القائمة
     setValue(f, 'category', t.category);
+
+    // تعبئة المبلغ القديم
     setValue(f, 'amount', t.amount);
+
+    // تحديد الحساب الذي دخل إليه المبلغ
     setValue(f, 'account', t.account);
   },
 
-  read: f => ({ sector: val(f, 'sector'), category: val(f, 'category'), amount: val(f, 'amount'), account: val(f, 'account') }),
+  /**
+   * قراءة البيانات من النموذج قبل حفظ الإيراد.
+   *
+   * تُرجع كائناً يحتوي على القسم والمصدر والمبلغ والحساب.
+   */
+  read: f => ({
+    sector: val(f, 'sector'),     // القسم المالي
+    category: val(f, 'category'), // مصدر الدخل
+    amount: val(f, 'amount'),     // مبلغ الإيراد
+    account: val(f, 'account')    // الحساب المستقبِل للمبلغ
+  }),
 };

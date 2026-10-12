@@ -1,66 +1,216 @@
+
 import { store, newId } from '../data/store.js';
+// إدارة بيانات التطبيق وحفظ التعديلات وإنشاء معرّف جديد لكل عملية
+
 import { findTx, findProduct } from '../domain/lookup.js';
+// البحث عن عملية مالية أو منتج باستخدام المعرّف
+
 import { hasNegativeStock } from '../domain/inventory.js';
+// التحقق مما إذا كانت أي كمية في المخزون أصبحت سالبة
+
 import { debts, paidOn } from '../domain/debts.js';
+// حساب الديون المتبقية ومعرفة المبالغ المسددة من دين محدد
+
 import { EPS } from '../core/constants.js';
+// هامش صغير للتعامل مع فروقات الكسور العشرية في المبالغ
+
 import { fmt, r2, today } from '../core/format.js';
+// fmt لتنسيق المبالغ، وr2 لتقريبها إلى منزلتين، وtoday لإرجاع تاريخ اليوم
 
+
+// إنشاء نتيجة خطأ تُعاد عند فشل عملية التحقق
 const fail = error => ({ error });
-const payment = (ref, amount, account) =>
-  ({ id: newId(), type: 'debtpay', sector: 'invest', ref, amount, account, date: today(), note: '' });
 
+
+// إنشاء سجل جديد لسداد دين
+const payment = (ref, amount, account) => ({
+  id: newId(), // معرّف فريد لعملية السداد
+  type: 'debtpay', // تحديد نوع العملية بأنها سداد دين
+  sector: 'invest', // السداد مرتبط بقطاع الاستثمار
+  ref, // معرّف عملية الشراء بالدين التي يجري سدادها
+  amount, // المبلغ الذي تم دفعه
+  account, // الحساب الذي خرج منه المبلغ
+  date: today(), // تاريخ تسجيل السداد
+  note: '', // ملاحظات فارغة افتراضيًا
+});
+
+
+// تعديل بيانات دين مسجل سابقًا
 export function saveDebt(id, { qty, amount, supplier }) {
+  // تنفيذ التعديلات على نسخة من البيانات؛ لا تُعتمد إلا إذا نجحت العملية
   return store.transact(s => {
+    // البحث عن عملية الشراء بالدين
     const t = findTx(s, id);
+
+    // رفض التعديل إذا لم نجد الدين
     if (!t) return fail('الدين غير موجود');
-    qty = +qty; amount = +amount;
-    if (!(qty > 0 && amount > 0)) return fail('أدخل الكمية والمبلغ');
+
+    // تحويل الكمية والمبلغ إلى أرقام
+    qty = +qty;
+    amount = +amount;
+
+    // يجب أن تكون الكمية والمبلغ أكبر من صفر
+    if (!(qty > 0 && amount > 0)) {
+      return fail('أدخل الكمية والمبلغ');
+    }
+
+    // حساب إجمالي ما تم دفعه لهذا الدين حتى الآن
     const paid = paidOn(s, id);
-    if (amount < paid - EPS) return fail('المبلغ أقل من المسدد (' + fmt(paid) + ')');
-    Object.assign(t, { qty, amount, unit: amount / qty, supplier: (supplier || '').trim() });
+
+    // لا نسمح بتخفيض قيمة الدين إلى أقل من المبلغ المسدد
+    if (amount < paid - EPS) {
+      return fail('المبلغ أقل من المسدد (' + fmt(paid) + ')');
+    }
+
+    // تحديث كمية الدين وقيمته وسعر الوحدة والمورد
+    Object.assign(t, {
+      qty, // الكمية المرتبطة بالدين
+      amount, // إجمالي قيمة الدين الجديدة
+      unit: amount / qty, // تكلفة الوحدة الواحدة
+      supplier: (supplier || '').trim(), // اسم المورد بعد إزالة المسافات
+    });
+
+    // العثور على المنتج المرتبط بعملية الشراء
     const p = findProduct(s, t.productId);
+
+    // إذا كان المنتج موجودًا، نحدّث تكلفته إلى تكلفة الوحدة الجديدة
     if (p) p.cost = t.unit;
-    if (hasNegativeStock(s)) return fail('الكمية بتخلي المخزون سالب');
+
+    // رفض التعديل إذا أدى إلى جعل كمية المخزون سالبة
+    if (hasNegativeStock(s)) {
+      return fail('الكمية بتخلي المخزون سالب');
+    }
   });
 }
 
+
+// تسجيل دفعة جديدة لسداد دين كليًا أو جزئيًا
 export function payDebt(id, { amount, account, all = false }) {
   return store.transact(s => {
+    // البحث عن الدين وحساب المبلغ المتبقي منه
     const d = debts(s).find(x => x.t.id === id);
+
+    // التأكد من أن الدين موجود
     if (!d) return fail('الدين غير موجود');
+
+    // إذا اختار المستخدم السداد الكامل، نستخدم كل المتبقي
+    // وإلا نستخدم المبلغ الذي أدخله المستخدم
     const a = all ? d.left : +amount;
+
+    // التأكد من إدخال مبلغ موجب
     if (!(a > 0)) return fail('أدخل مبلغ السداد');
-    if (a > d.left + EPS) return fail('المبلغ أكبر من المتبقي (' + fmt(d.left) + ')');
+
+    // منع سداد مبلغ أكبر من المتبقي من الدين
+    if (a > d.left + EPS) {
+      return fail('المبلغ أكبر من المتبقي (' + fmt(d.left) + ')');
+    }
+
+    // إضافة عملية سداد جديدة بعد تقريب المبلغ إلى منزلتين عشريتين
     s.tx.push(payment(id, r2(a), account));
   });
 }
 
+
+// تعديل عملية سداد مسجلة سابقًا
 export function savePayment(id, { amount, account }) {
   return store.transact(s => {
+    // البحث عن عملية السداد المطلوب تعديلها
     const t = findTx(s, id);
+
+    // التأكد من أن عملية السداد موجودة
     if (!t) return fail('السداد غير موجود');
+
+    // تحويل المبلغ الجديد إلى رقم
     const a = +amount;
+
+    // يجب أن يكون مبلغ السداد أكبر من صفر
     if (!(a > 0)) return fail('أدخل مبلغاً أكبر من صفر');
+
+    // حساب وضع الدين الذي تتبعه عملية السداد
     const d = debts(s).find(x => x.t.id === t.ref);
-    if (d && a > d.left + t.amount + EPS) return fail('المبلغ أكبر من المتبقي من الدين');
-    Object.assign(t, { amount: a, account });
+
+    // إذا كان الدين موجودًا، نتحقق من أن مبلغ السداد الجديد
+    // لا يتجاوز المتبقي بعد احتساب مبلغ هذه الدفعة القديمة
+    if (d && a > d.left + t.amount + EPS) {
+      return fail('المبلغ أكبر من المتبقي من الدين');
+    }
+
+    // تحديث مبلغ السداد والحساب الذي دُفع منه
+    Object.assign(t, {
+      amount: a,
+      account,
+    });
   });
 }
 
-export const deletePayment = id => store.transact(s => { s.tx = s.tx.filter(x => x.id !== id); });
 
-/** تسوية مورّد: المستحق عن المباع أولاً (من الأقدم)، وما زاد يذهب لباقي الدين */
+// حذف عملية سداد باستخدام معرّفها
+export const deletePayment = id => store.transact(s => {
+  // الاحتفاظ بجميع العمليات باستثناء عملية السداد المطلوب حذفها
+  s.tx = s.tx.filter(x => x.id !== id);
+});
+
+
+/**
+ * تسوية ديون مورد محدد:
+ * 1. توزيع المبلغ أولًا على المبالغ المستحقة عن البضاعة المباعة.
+ * 2. ترتيب الديون وفق ترتيبها في قائمة debts.
+ * 3. توزيع أي مبلغ متبقٍ على باقي الدين.
+ */
 export function settleSupplier(key, { amount, account }) {
   return store.transact(s => {
+    // المبلغ المتبقي من المبلغ الذي يريد المستخدم دفعه وتوزيعه
     let rest = +amount;
-    const ds = debts(s).filter(d => (d.t.supplier || '') === key && d.left > EPS);
-    const left = ds.reduce((a, d) => a + d.left, 0);
-    if (!(rest > 0)) return fail('أدخل مبلغ السداد');
-    if (rest > left + EPS) return fail('المبلغ أكبر من كل المتبقي (' + fmt(left) + ')');
 
+    // جمع ديون المورد المحدد التي ما زال فيها مبلغ مستحق
+    const ds = debts(s).filter(
+      d => (d.t.supplier || '') === key && d.left > EPS
+    );
+
+    // حساب إجمالي الديون المتبقية لهذا المورد
+    const left = ds.reduce((a, d) => a + d.left, 0);
+
+    // التأكد من إدخال مبلغ موجب
+    if (!(rest > 0)) return fail('أدخل مبلغ السداد');
+
+    // منع دفع مبلغ أكبر من مجموع ديون المورد
+    if (rest > left + EPS) {
+      return fail('المبلغ أكبر من كل المتبقي (' + fmt(left) + ')');
+    }
+
+    // إنشاء خطة توزيع: كل دين يبدأ بمبلغ سداد مخصص يساوي صفرًا
     const plan = ds.map(d => ({ d, x: 0 }));
-    for (const p of plan) { const v = Math.min(p.d.due, rest); p.x += v; rest -= v; }
-    for (const p of plan) { if (rest <= 0.004) break; const v = Math.min(p.d.left - p.x, rest); p.x += v; rest -= v; }
-    plan.forEach(p => { if (p.x > 0.004) s.tx.push(payment(p.d.t.id, r2(p.x), account)); });
+
+    // المرحلة الأولى:
+    // تخصيص المبلغ للمستحق عن البضاعة المباعة في كل دين
+    for (const p of plan) {
+      // لا نخصص أكثر من المستحق لهذا الدين أو المبلغ المتبقي للدفع
+      const v = Math.min(p.d.due, rest);
+
+      p.x += v; // إضافة المبلغ إلى حصة هذا الدين
+      rest -= v; // تقليل المبلغ الذي لم يُوزع بعد
+    }
+
+    // المرحلة الثانية:
+    // إذا بقي مبلغ، نوزعه على بقية الديون غير المسددة
+    for (const p of plan) {
+      // التوقف عندما يصبح المبلغ المتبقي صغيرًا جدًا
+      if (rest <= 0.004) break;
+
+      // حساب أقصى مبلغ إضافي يمكن تخصيصه لهذا الدين
+      // بعد خصم ما سبق تخصيصه له
+      const v = Math.min(p.d.left - p.x, rest);
+
+      p.x += v; // زيادة حصة السداد لهذا الدين
+      rest -= v; // تحديث المبلغ المتبقي للتوزيع
+    }
+
+    // إنشاء عملية سداد منفصلة لكل دين حصل على مبلغ من التسوية
+    plan.forEach(p => {
+      if (p.x > 0.004) {
+        // تقريب حصة الدين إلى منزلتين عشريتين قبل تسجيلها
+        s.tx.push(payment(p.d.t.id, r2(p.x), account));
+      }
+    });
   });
 }

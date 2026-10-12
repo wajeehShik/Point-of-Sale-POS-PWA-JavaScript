@@ -1,25 +1,113 @@
-import { TX_TYPES } from '../domain/txTypes.js';
-import { accountName, productName } from '../domain/lookup.js';
-import { inPeriod } from '../domain/ledger.js';
-import { weekday } from '../core/dates.js';
-import { SECTORS } from '../core/constants.js';
-import { today } from '../core/format.js';
 
+import { TX_TYPES } from '../domain/txTypes.js';
+// أسماء أنواع العمليات المالية، مثل الإيراد والمصروف والبيع والشراء
+
+import { accountName, productName } from '../domain/lookup.js';
+// دوال للحصول على اسم الحساب واسم المنتج من معرّف كل منهما
+
+import { inPeriod } from '../domain/ledger.js';
+// التحقق مما إذا كان تاريخ العملية يقع ضمن الفترة المحددة
+
+import { weekday } from '../core/dates.js';
+// استخراج اسم يوم الأسبوع من التاريخ
+
+import { SECTORS } from '../core/constants.js';
+// معلومات القطاعات المالية، مثل البيت والاستثمار
+
+import { today } from '../core/format.js';
+// الحصول على تاريخ اليوم
+
+
+// تجهيز بيانات نسخة احتياطية من جميع بيانات التطبيق
 export const backupFile = state => ({
-  name: `mali-backup-${today()}.json`, content: JSON.stringify(state, null, 1), mime: 'application/json',
+  // اسم ملف النسخة الاحتياطية، ويتضمن تاريخ إنشائها
+  name: `mali-backup-${today()}.json`,
+
+  // تحويل بيانات التطبيق إلى نص JSON مع تنسيق يسهل قراءته
+  // الرقم 1 يعني استخدام مسافة بادئة واحدة عند ترتيب البيانات
+  content: JSON.stringify(state, null, 1),
+
+  // تحديد نوع الملف حتى يتعامل معه المتصفح كملف JSON
+  mime: 'application/json',
 });
 
+
+// تجهيز ملف CSV يحتوي على العمليات المالية ضمن فترة معينة
 export function csvFile(state, period) {
-  const head = ['التاريخ', 'اليوم', 'النوع', 'القسم', 'البند', 'الكمية', 'المبلغ', 'المحفظة', 'ملاحظة'];
-  const rows = state.tx.filter(t => inPeriod(t.date, period))
+  // عناوين الأعمدة التي ستظهر في الصف الأول من ملف CSV
+  const head = [
+    'التاريخ',
+    'اليوم',
+    'النوع',
+    'القسم',
+    'البند',
+    'الكمية',
+    'المبلغ',
+    'المحفظة',
+    'ملاحظة',
+  ];
+
+  // اختيار العمليات التي تقع تواريخها ضمن الفترة المطلوبة
+  const rows = state.tx
+    .filter(t => inPeriod(t.date, period))
+
+    // ترتيب العمليات من الأقدم إلى الأحدث حسب التاريخ
     .sort((a, b) => a.date.localeCompare(b.date))
+
+    // تحويل كل عملية إلى صف يحتوي على بياناتها المطلوبة
     .map(t => [
-      t.date, weekday(t.date), TX_TYPES[t.type].label, SECTORS[t.sector].label,
-      t.productId ? productName(state, t.productId) : (t.category || ''),
+      t.date, // تاريخ العملية
+      weekday(t.date), // اسم يوم الأسبوع
+      TX_TYPES[t.type].label, // الاسم الظاهر لنوع العملية
+      SECTORS[t.sector].label, // اسم القطاع، مثل البيت أو الاستثمار
+
+      // إذا كانت العملية مرتبطة بمنتج، نعرض اسم المنتج
+      // وإلا نعرض التصنيف، أو نصًا فارغًا إذا لم يوجد
+      t.productId
+        ? productName(state, t.productId)
+        : (t.category || ''),
+
+      // عرض كمية المنتج إن وجدت،
+      // أو كمية المصروف مع وحدتها إن كانت مسجلة
       t.qty || (t.eqty ? `${t.eqty} ${t.eunit || ''}` : ''),
-      t.amount, accountName(state, t.account), t.note || '',
+
+      t.amount, // قيمة العملية المالية
+      accountName(state, t.account), // اسم الحساب المرتبط بالعملية
+      t.note || '', // الملاحظة، أو نص فارغ إذا لم توجد
     ]);
-  const csv = '\ufeff' + [head, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const tag = typeof period === 'object' ? `${period.from}_${period.to}` : (period || 'all');
-  return { name: `mali-${tag}.csv`, content: csv, mime: 'text/csv;charset=utf-8' };
+
+  // إنشاء نص CSV:
+  // إضافة BOM في البداية لتحسين ظهور النص العربي في برامج مثل Excel
+  const csv = '\ufeff' +
+
+    // دمج صف العناوين مع صفوف العمليات
+    [head, ...rows]
+
+      // تحويل كل صف إلى نص يفصل بين أعمدته بفواصل
+      .map(r => r
+
+        // وضع كل قيمة بين علامتي اقتباس
+        // ومضاعفة أي علامة اقتباس موجودة داخل القيمة
+        .map(c => `"${String(c).replace(/"/g, '""')}"`)
+
+        // فصل الأعمدة بفاصلة
+        .join(','))
+
+      // فصل الصفوف بأسطر جديدة
+      .join('\n');
+
+  // تحديد اسم الفترة المستخدمة في اسم الملف
+  // إذا كانت الفترة عبارة عن تاريخ بداية ونهاية، نستخدمهما
+  // وإذا كانت شهرًا أو قيمة أخرى، نستخدمها كما هي
+  // وإذا لم تُحدد فترة، نستخدم كلمة all
+  const tag = typeof period === 'object'
+    ? `${period.from}_${period.to}`
+    : (period || 'all');
+
+  // إرجاع اسم الملف ومحتواه ونوعه
+  return {
+    name: `mali-${tag}.csv`, // اسم ملف التصدير
+    content: csv, // بيانات العمليات بصيغة CSV
+    mime: 'text/csv;charset=utf-8', // نوع الملف مع دعم ترميز UTF-8
+  };
 }

@@ -1,8 +1,45 @@
-/** تفضيلات بسيطة (فلتر الفترة، القفل...) مفصولة عن بيانات المال */
+
+/*
+ * كائن لحفظ واسترجاع تفضيلات المستخدم.
+ * منفصل عن بيانات المال مثل العمليات والمنتجات والديون.
+ */
 export const prefs = {
+
+  /*
+   * قراءة قيمة من localStorage.
+   *
+   * key: اسم المفتاح الذي نريد قراءته.
+   * fallback: القيمة البديلة إذا لم نجد المفتاح.
+   */
   get(key, fallback = '') {
-    try { const v = localStorage.getItem(key); return v === null ? fallback : v; }
-    catch { return fallback; }
+    try {
+      // محاولة قراءة القيمة المحفوظة.
+      const v = localStorage.getItem(key);
+
+      // إذا لم يكن المفتاح موجودًا، نعيد القيمة البديلة.
+      // وإلا نعيد القيمة المحفوظة.
+      return v === null ? fallback : v;
+
+    } catch {
+      // إذا فشل الوصول إلى localStorage،
+      // نعيد القيمة البديلة بدل توقف التطبيق.
+      return fallback;
+    }
   },
-  set(key, value) { try { localStorage.setItem(key, value); } catch { /* تجاهل */ } },
+
+  /*
+   * حفظ قيمة في localStorage.
+   *
+   * key: اسم المفتاح.
+   * value: القيمة التي نريد حفظها.
+   */
+  set(key, value) {
+    try {
+      localStorage.setItem(key, value);
+
+    } catch {
+      // تجاهل الخطأ إذا تعذر التخزين.
+      // مثل امتلاء المساحة أو منع المتصفح للتخزين.
+    }
+  },
 };

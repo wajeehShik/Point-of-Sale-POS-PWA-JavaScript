@@ -1,20 +1,95 @@
-/**
- * كل نوع عملية = وصف لتأثيره على الأرصدة.
- * effects(t) ترجع قائمة {sector, account, delta}. sign للعرض فقط.
- */
-const money = (t, sign) => [{ sector: t.sector, account: t.account, delta: sign * t.amount }];
 
+/**
+ * كل نوع عملية يحدد كيف يؤثر على أرصدة الحسابات.
+ * الدالة effects(t) ترجع قائمة بالتغييرات، وكل تغيير يحتوي على:
+ * sector: القطاع المالي (البيت أو الاستثمار).
+ * account: الحساب الذي سيتأثر.
+ * delta: مقدار التغيير في الرصيد؛ موجب يعني زيادة وسالب يعني نقصان.
+ *
+ * ملاحظة: sign يُستخدم لتحديد إشارة المبلغ عند العرض والحسابات التي تعتمد عليه.
+ */
+
+// دالة مساعدة لإنشاء تأثير مالي واحد على حساب محدد
+const money = (t, sign) => [
+  {
+    sector: t.sector, // القطاع الذي تتبع له العملية
+    account: t.account, // الحساب الذي ستتغير قيمته
+    delta: sign * t.amount, // مقدار الزيادة أو النقصان في الرصيد
+  },
+];
+
+
+// تعريف أنواع العمليات المالية وتأثير كل نوع على الأرصدة
 export const TX_TYPES = {
-  income:   { icon: '💰', label: 'إيراد',    sign: +1, effects: t => money(t, +1) },
-  sale:     { icon: '🛒', label: 'بيع',      sign: +1, effects: t => money(t, +1) },
-  expense:  { icon: '💸', label: 'مصروف',    sign: -1, effects: t => money(t, -1) },
-  purchase: { icon: '📦', label: 'شراء',     sign: -1, effects: t => (t.credit ? [] : money(t, -1)) },
-  debtpay:  { icon: '🤝', label: 'سداد دين', sign: -1, effects: t => money(t, -1) },
-  transfer: { icon: '🔄', label: 'تحويل',    sign:  0, effects: t => [
-    { sector: t.sector,   account: t.account,   delta: -t.amount },
-    { sector: t.toSector, account: t.toAccount, delta: +t.amount },
-  ] },
+  // إيراد: يزيد رصيد الحساب
+  income: {
+    icon: '💰', // الأيقونة التي تظهر بجانب نوع العملية
+    label: 'إيراد', // الاسم الذي يظهر للمستخدم
+    sign: +1, // إشارة موجبة لأن الإيراد يزيد المال
+    effects: t => money(t, +1), // إضافة المبلغ إلى رصيد الحساب
+  },
+
+  // بيع: يزيد رصيد الحساب بالمبلغ المستلم من البيع
+  sale: {
+    icon: '🛒',
+    label: 'بيع',
+    sign: +1,
+    effects: t => money(t, +1), // زيادة رصيد الحساب بقيمة البيع
+  },
+
+  // مصروف: ينقص رصيد الحساب
+  expense: {
+    icon: '💸',
+    label: 'مصروف',
+    sign: -1, // إشارة سالبة لأن المصروف يقلل المال
+    effects: t => money(t, -1), // خصم المبلغ من رصيد الحساب
+  },
+
+  // شراء: ينقص رصيد الحساب إذا تم الدفع مباشرة
+  purchase: {
+    icon: '📦',
+    label: 'شراء',
+    sign: -1,
+    // إذا كان الشراء بالدين، لا نخصم المبلغ الآن من الحساب
+    effects: t => (t.credit ? [] : money(t, -1)),
+  },
+
+  // سداد دين: ينقص رصيد الحساب بالمبلغ الذي تم دفعه
+  debtpay: {
+    icon: '🤝',
+    label: 'سداد دين',
+    sign: -1,
+    effects: t => money(t, -1), // خصم قيمة السداد من الحساب
+  },
+
+  // تحويل: ينقص رصيد الحساب المرسل ويزيد رصيد الحساب المستقبِل
+  transfer: {
+    icon: '🔄',
+    label: 'تحويل',
+    sign: 0, // التحويل لا يزيد المال الإجمالي ولا ينقصه
+    effects: t => [
+      {
+        sector: t.sector, // قطاع الحساب الذي أرسل المال
+        account: t.account, // الحساب الذي خرج منه المال
+        delta: -t.amount, // خصم المبلغ من الحساب المرسل
+      },
+      {
+        sector: t.toSector, // قطاع الحساب المستقبِل
+        account: t.toAccount, // الحساب الذي وصل إليه المال
+        delta: +t.amount, // إضافة المبلغ إلى الحساب المستقبِل
+      },
+    ],
+  },
 };
 
-/** الأثر النقدي المعروض (الشراء بالدين والتحويل = صفر) */
-export const signed = t => (t.credit ? 0 : TX_TYPES[t.type].sign * t.amount);
+
+/**
+ * تحديد الإشارة التي ستُستخدم عند عرض قيمة العملية.
+ * الشراء بالدين يُعرض بصافي تأثير نقدي يساوي صفرًا؛
+ * لأنه لم يتم دفع المال عند تسجيل عملية الشراء.
+ *
+ * ملاحظة: التحويل إشارته صفر هنا، لأن sign الخاص به يساوي صفرًا،
+ * مع أن effects تسجل خصمًا من حساب وإضافة إلى حساب آخر.
+ */
+export const signed = t =>
+  (t.credit ? 0 : TX_TYPES[t.type].sign * t.amount);

@@ -1,8 +1,44 @@
+// استيراد نموذج تسجيل الإيرادات
 import income from './income.js';
+
+// استيراد نموذج تسجيل المصروفات
 import expense from './expense.js';
+
+// استيراد نموذج بيع المنتجات
 import sale from './sale.js';
+
+// استيراد نموذج شراء المنتجات، سواء نقداً أو بالدين
 import purchase from './purchase.js';
+
+// استيراد نموذج تحويل الأموال بين الحسابات أو الأقسام
 import transfer from './transfer.js';
+
+// استيراد نموذج سداد ديون المورّدين
 import debtpay from './debtpay.js';
 
-export const FORMS = { income, expense, sale, purchase, transfer, debtpay };
+/**
+ * تجميع جميع نماذج العمليات في كائن واحد.
+ *
+ * المفتاح هو نوع العملية، والقيمة هي النموذج المسؤول عنها.
+ *
+ * مثال:
+ * FORMS.income   → نموذج الإيرادات
+ * FORMS.expense  → نموذج المصروفات
+ * FORMS.sale     → نموذج المبيعات
+ * FORMS.purchase → نموذج المشتريات
+ * FORMS.transfer → نموذج التحويلات
+ * FORMS.debtpay  → نموذج سداد الديون
+ *
+ * هذا يسمح لبقية التطبيق باختيار النموذج المناسب
+ * بناءً على نوع العملية بدلاً من استيراد كل نموذج واختياره يدوياً في كل مكان.
+ */
+export const FORMS = {
+  income,
+  expense,
+  sale,
+  purchase,
+  transfer,
+  debtpay
+};
+
+//**الفكرة ببساطة: هذا الملف هو نقطة تجميع للنماذج؛ عندما يحتاج التطبيق إلى فتح نموذج عملية معينة، يمكنه استخدام FORMS[type] للوصول إلى النموذج المناسب. */

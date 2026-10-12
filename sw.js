@@ -1,36 +1,285 @@
-const V='mali-v20';
-const FILES=[
-  './','index.html','manifest.json','icons/icon.svg','css/style.css',
+
+/*
+|--------------------------------------------------------------------------
+| أولًا: تحديد إصدار ذاكرة التخزين المؤقت Cache
+|--------------------------------------------------------------------------
+*/
+
+// اسم الإصدار الحالي لذاكرة التخزين المؤقت الخاصة بالتطبيق.
+// نستخدم هذا الاسم لتمييز ملفات الإصدار الحالي عن ملفات الإصدارات القديمة.
+//
+// عند تغيير الاسم مثلًا إلى 'mali-v21'، يستطيع Service Worker
+// إنشاء Cache جديد، ثم حذف الـ Cache القديم أثناء مرحلة activate.
+//
+// مهم: تغيير هذا الاسم وحده لا يحدّث التطبيق على كل الأجهزة فورًا؛
+// بل يجب أن تتم عملية تثبيت وتفعيل Service Worker الجديد.
+const V = 'mali-v20';
+
+
+/*
+|--------------------------------------------------------------------------
+| ثانيًا: تحديد الملفات التي نريد تخزينها عند تثبيت Service Worker
+|--------------------------------------------------------------------------
+*/
+
+// هذه مصفوفة Array تحتوي على مسارات الملفات الأساسية في المشروع.
+//
+// عند تثبيت Service Worker، سنحاول تحميل هذه الملفات وتخزينها
+// داخل Cache حتى يمكن استخدامها عند انقطاع الإنترنت.
+//
+// './' يشير إلى المسار الحالي الذي يعمل منه Service Worker.
+// 'index.html' هي صفحة HTML الرئيسية للتطبيق.
+// 'manifest.json' يحتوي على معلومات تثبيت التطبيق مثل الاسم والأيقونات.
+// 'icons/icon.svg' هو ملف الأيقونة.
+// 'css/style.css' يحتوي على تنسيقات واجهة المستخدم.
+// ملفات js تحتوي على منطق التطبيق وبياناته وواجهاته.
+//
+// ملاحظة: يجب أن تكون المسارات صحيحة ومتاحة من النطاق نفسه
+// حتى يمكن تخزينها بنجاح.
+const FILES = [
+  './',
+  'index.html',
+  'manifest.json',
+  'icons/icon.svg',
+  'css/style.css',
+
+  // الملف الرئيسي الذي قد يربط أجزاء التطبيق ببعضها.
   'js/main.js',
-  'js/core/constants.js','js/core/format.js','js/core/dates.js',
-  'js/data/store.js','js/data/prefs.js',
-  'js/domain/txTypes.js','js/domain/lookup.js','js/domain/ledger.js','js/domain/inventory.js',
-  'js/domain/debts.js','js/domain/period.js','js/domain/search.js','js/domain/analytics.js',
-  'js/services/transactions.js','js/services/products.js','js/services/debts.js',
-  'js/services/settings.js','js/services/export.js','js/services/auth.js','js/services/install.js',
-  'js/ui/dom.js','js/ui/actions.js','js/ui/state.js','js/ui/router.js','js/ui/sheet.js',
-  'js/ui/components.js','js/ui/periodBar.js','js/ui/txList.js','js/ui/opsView.js',
-  'js/ui/entry.js','js/ui/deleteFlow.js','js/ui/productSheet.js','js/ui/supplierSheet.js',
-  'js/ui/login.js','js/ui/install.js',
-  'js/ui/forms/fields.js','js/ui/forms/index.js','js/ui/forms/income.js','js/ui/forms/expense.js',
-  'js/ui/forms/sale.js','js/ui/forms/purchase.js','js/ui/forms/transfer.js','js/ui/forms/debtpay.js',
-  'js/ui/views/productsView.js','js/ui/views/suppliersView.js','js/ui/views/cashFlowView.js','js/ui/views/monthsChart.js',
-  'js/ui/pages/dashboard.js','js/ui/pages/home.js','js/ui/pages/invest.js','js/ui/pages/reports.js','js/ui/pages/settings.js',
+
+  // ملفات أساسية: الثوابت والتنسيقات والتواريخ.
+  'js/core/constants.js',
+  'js/core/format.js',
+  'js/core/dates.js',
+
+  // ملفات حفظ البيانات والتفضيلات.
+  'js/data/store.js',
+  'js/data/prefs.js',
+
+  // ملفات منطق العمليات المالية والمخزون والديون والتقارير.
+  'js/domain/txTypes.js',
+  'js/domain/lookup.js',
+  'js/domain/ledger.js',
+  'js/domain/inventory.js',
+  'js/domain/debts.js',
+  'js/domain/period.js',
+  'js/domain/search.js',
+  'js/domain/analytics.js',
+
+  // ملفات الخدمات التي تنفذ العمليات الأساسية للتطبيق.
+  'js/services/transactions.js',
+  'js/services/products.js',
+  'js/services/debts.js',
+  'js/services/settings.js',
+  'js/services/export.js',
+  'js/services/auth.js',
+  'js/services/install.js',
+
+  // ملفات عناصر الواجهة والتفاعل والتنقل.
+  'js/ui/dom.js',
+  'js/ui/actions.js',
+  'js/ui/state.js',
+  'js/ui/router.js',
+  'js/ui/sheet.js',
+  'js/ui/components.js',
+  'js/ui/periodBar.js',
+  'js/ui/txList.js',
+  'js/ui/opsView.js',
+  'js/ui/entry.js',
+  'js/ui/deleteFlow.js',
+  'js/ui/productSheet.js',
+  'js/ui/supplierSheet.js',
+  'js/ui/login.js',
+  'js/ui/install.js',
+
+  // ملفات النماذج المستخدمة لإدخال أنواع العمليات المختلفة.
+  'js/ui/forms/fields.js',
+  'js/ui/forms/index.js',
+  'js/ui/forms/income.js',
+  'js/ui/forms/expense.js',
+  'js/ui/forms/sale.js',
+  'js/ui/forms/purchase.js',
+  'js/ui/forms/transfer.js',
+  'js/ui/forms/debtpay.js',
+
+  // ملفات عرض المنتجات والموردين والتدفق النقدي والرسوم.
+  'js/ui/views/productsView.js',
+  'js/ui/views/suppliersView.js',
+  'js/ui/views/cashFlowView.js',
+  'js/ui/views/monthsChart.js',
+
+  // صفحات التطبيق الرئيسية.
+  'js/ui/pages/dashboard.js',
+  'js/ui/pages/home.js',
+  'js/ui/pages/invest.js',
+  'js/ui/pages/reports.js',
+  'js/ui/pages/settings.js',
 ];
 
-self.addEventListener('install',e=>{
-  e.waitUntil(caches.open(V).then(c=>Promise.allSettled(FILES.map(f=>c.add(f)))));
+
+/*
+|--------------------------------------------------------------------------
+| ثالثًا: حدث install — تثبيت Service Worker
+|--------------------------------------------------------------------------
+*/
+
+// addEventListener تسجّل دالة تعمل عند وقوع حدث معين.
+//
+// self هنا يشير إلى نطاق عمل Service Worker نفسه،
+// وليس إلى نافذة الصفحة مثل window.
+//
+// حدث install يحدث عندما يثبّت المتصفح Service Worker جديدًا.
+self.addEventListener('install', e => {
+
+  // e هو كائن الحدث Event الذي يمرره المتصفح.
+  //
+  // waitUntil يخبر المتصفح أن عملية التثبيت تعتمد على اكتمال
+  // الوعد Promise الذي نمرره إليه.
+  //
+  // إذا انتهى الحدث قبل اكتمال المهمة، فقد يعتبر المتصفح
+  // أن Service Worker لم ينجح في التثبيت كما ينبغي.
+  e.waitUntil(
+
+    // فتح Cache يحمل اسم الإصدار الحالي.
+    // إذا لم يكن موجودًا، تنشئ caches.open هذا الـ Cache.
+    caches.open(V)
+
+      // c هو كائن Cache الذي فتحناه.
+      .then(c =>
+
+        // نحاول إضافة جميع الملفات إلى Cache.
+        //
+        // FILES.map(f => c.add(f)) تنشئ محاولة مستقلة لكل ملف.
+        // c.add(f) يجلب الملف من الشبكة ويحفظ الاستجابة في Cache.
+        //
+        // Promise.allSettled ينتظر انتهاء جميع المحاولات،
+        // سواء نجحت أو فشلت، ويعيد نتيجة لكل محاولة.
+        //
+        // استخدام allSettled يعني أن فشل ملف واحد لا يؤدي وحده
+        // إلى رفض الوعد النهائي لهذه المجموعة.
+        Promise.allSettled(
+          FILES.map(f => c.add(f))
+        )
+      )
+  );
+
+  // نطلب من المتصفح تفعيل Service Worker الجديد فورًا،
+  // بدلًا من انتظار إغلاق الصفحات التي تستخدم الإصدار القديم.
+  //
+  // هذا طلب للتفعيل المبكر، وليس ضمانًا بأن كل خطوة ستنجح.
   self.skipWaiting();
 });
-self.addEventListener('activate',e=>{
-  e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==V).map(k=>caches.delete(k)))));
+
+
+/*
+|--------------------------------------------------------------------------
+| رابعًا: حدث activate — تفعيل Service Worker
+|--------------------------------------------------------------------------
+*/
+
+// يحدث activate بعد تثبيت Service Worker ووصوله إلى مرحلة التفعيل.
+// هنا ننظف Cache القديم ونطلب السيطرة على صفحات التطبيق.
+self.addEventListener('activate', e => {
+
+  // نطلب من المتصفح انتظار اكتمال عمليات التنظيف.
+  e.waitUntil(
+
+    // keys() تعيد أسماء جميع مخازن Cache الموجودة
+    // ضمن نطاق التخزين الخاص بهذا الأصل Origin.
+    caches.keys()
+
+      // keys هي مصفوفة أسماء الـ Cache.
+      .then(keys =>
+
+        // نمر على جميع الأسماء ونحدد المخازن القديمة.
+        Promise.all(
+
+          keys
+
+            // نحتفظ فقط بالمخازن التي يختلف اسمها عن الإصدار الحالي.
+            .filter(k => k !== V)
+
+            // نحذف كل Cache قديم باستخدام اسمه.
+            // caches.delete تعيد Promise بنتيجة الحذف.
+            .map(k => caches.delete(k))
+        )
+      )
+  );
+
+  // نطلب من Service Worker السيطرة على صفحات مفتوحة
+  // ضمن نطاقه دون الحاجة إلى إعادة تحميلها يدويًا.
+  //
+  // هذا مفيد بعد التفعيل، مع مراعاة قواعد النطاق في المتصفح.
   self.clients.claim();
 });
-self.addEventListener('fetch',e=>{
-  if(e.request.method!=='GET')return;
+
+
+/*
+|--------------------------------------------------------------------------
+| خامسًا: حدث fetch — التعامل مع طلبات الشبكة
+|--------------------------------------------------------------------------
+*/
+
+// هذا الحدث يعمل عندما تصدر الصفحة طلبًا لمورد مثل:
+// HTML أو CSS أو JavaScript أو صورة.
+//
+// Service Worker يستطيع اعتراض الطلب واختيار الاستجابة
+// من الشبكة أو من Cache.
+self.addEventListener('fetch', e => {
+
+  // نسمح لهذا المعالج بالتعامل مع طلبات GET فقط.
+  //
+  // GET تُستخدم عادة لجلب البيانات والملفات.
+  // أما POST وPUT وDELETE وغيرها فلا يعالجها هذا الكود هنا.
+  //
+  // return ينهي تنفيذ هذه الدالة لهذا الطلب،
+  // وبالتالي يترك المتصفح يتعامل معه بالطريقة المعتادة.
+  if (e.request.method !== 'GET') return;
+
+  // respondWith يسمح لنا بتحديد الاستجابة التي ستُعاد
+  // إلى الصفحة بدلًا من ترك الاختيار للمتصفح وحده.
   e.respondWith(
+
+    // نحاول جلب المورد من الشبكة أولًا.
     fetch(e.request)
-      .then(r=>{const copy=r.clone();caches.open(V).then(c=>c.put(e.request,copy));return r})
-      .catch(()=>caches.match(e.request).then(r=>r||caches.match('index.html')))
+
+      // إذا نجح طلب الشبكة، نصل إلى then.
+      .then(r => {
+
+        // استجابة الشبكة Response لا يمكن استهلاك جسمها
+        // بشكل مستقل أكثر من مرة عادةً.
+        //
+        // clone() ينشئ نسخة من الاستجابة حتى نستخدمها
+        // للتخزين في Cache، بينما نعيد الاستجابة الأصلية للصفحة.
+        const copy = r.clone();
+
+        // نفتح Cache الخاص بالإصدار الحالي.
+        //
+        // put يحفظ نسخة الاستجابة تحت مفتاح الطلب نفسه.
+        // نستخدم النسخة copy حتى لا نستهلك الاستجابة الأصلية.
+        //
+        // ملاحظة مهمة: هذه العملية غير منتظر اكتمالها هنا؛
+        // أي إن الكود لا ينتظر انتهاء التخزين قبل إعادة الاستجابة.
+        // كما أنه لا يتعامل صراحة مع أخطاء التخزين المحتملة.
+        caches.open(V).then(c => c.put(e.request, copy));
+
+        // نعيد استجابة الشبكة الأصلية إلى الصفحة.
+        return r;
+      })
+
+      // إذا فشل fetch، مثل انقطاع الإنترنت أو تعذر الوصول
+      // إلى الشبكة، ينتقل التنفيذ إلى catch.
+      .catch(() =>
+
+        // نحاول أولًا العثور على استجابة مطابقة للطلب
+        // داخل أي Cache متاح عبر caches.match.
+        caches.match(e.request)
+
+          // إذا وجدنا الاستجابة المخزنة، نعيدها.
+          //
+          // إذا لم نجدها، نبحث عن index.html.
+          // هذا يفيد في بعض حالات فتح التطبيق دون إنترنت،
+          // لكنه لا يناسب كل أنواع الطلبات أو كل المسارات.
+          .then(r => r || caches.match('index.html'))
+      )
   );
 });
