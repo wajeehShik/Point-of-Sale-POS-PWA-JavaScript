@@ -1,30 +1,139 @@
+
+/**
+ * استيراد أداة اختيار عناصر HTML باستخدام CSS Selectors.
+ * مثال: $('#view') تعني اختيار العنصر الذي يحمل id="view".
+ */
 import { $ } from './dom.js';
+
+// استيراد مخزن بيانات التطبيق، الذي يحتوي على الحالة الحالية
+// ويوفر الاشتراك بالتغييرات التي تحدث على البيانات.
 import { store } from '../data/store.js';
 
+
+/**
+ * خريطة الصفحات المسجلة في التطبيق.
+ *
+ * المفتاح: اسم الصفحة، مثل dashboard أو products.
+ * القيمة: كائن الصفحة الذي يحتوي عادةً على العنوان ودالة render.
+ *
+ * مثال توضيحي:
+ * pages.set('dashboard', {
+ *   title: 'الرئيسية',
+ *   render: state => 'محتوى الصفحة'
+ * });
+ */
 const pages = new Map();
+
+
+// اسم آخر صفحة تم عرضها.
+// نستخدمه لمعرفة هل المستخدم بقي في نفس الصفحة أم انتقل لصفحة أخرى.
 let last = null;
 
+
+/**
+ * تسجيل صفحة جديدة داخل الموجّه.
+ *
+ * name: اسم الصفحة الذي يظهر في رابط المتصفح.
+ * page: كائن يحتوي على بيانات الصفحة ودالة رسمها.
+ *
+ * مثال:
+ * register('dashboard', dashboardPage);
+ */
 export const register = (name, page) => pages.set(name, page);
 
+
+/**
+ * تحديد اسم الصفحة الحالية من رابط المتصفح.
+ *
+ * إذا كان الرابط:
+ *   example.com/#/products
+ *
+ * فسيكون اسم الصفحة:
+ *   products
+ *
+ * إذا كان الاسم غير مسجل، نرجع إلى dashboard.
+ */
 export const currentName = () => {
+
+  // إزالة #/ من بداية الجزء الخاص بالصفحة في الرابط.
   const n = location.hash.replace('#/', '');
+
+  // إذا كانت الصفحة مسجلة، نستخدم اسمها.
+  // وإلا نرجع إلى الصفحة الرئيسية للوحة التحكم.
   return pages.has(n) ? n : 'dashboard';
 };
+
+
+/**
+ * إرجاع كائن الصفحة الحالية.
+ *
+ * نستخرج الاسم أولاً، ثم نبحث عن الصفحة في Map.
+ */
 export const currentPage = () => pages.get(currentName());
 
+
+/**
+ * إعادة رسم الصفحة الحالية وتحديث واجهة التطبيق.
+ *
+ * تُستدعى عند التنقل بين الصفحات أو عند تغيّر بيانات التطبيق.
+ */
 export function refresh() {
-  const name = currentName(), page = pages.get(name);
-  const y = scrollY, samePage = last === name;
+
+  // معرفة اسم الصفحة الحالية وكائنها المسجل.
+  const name = currentName();
+  const page = pages.get(name);
+
+  // حفظ موضع التمرير الحالي حتى لا يعود المستخدم إلى أعلى الصفحة
+  // في كل مرة تتحدث فيها البيانات داخل الصفحة نفسها.
+  const y = scrollY;
+
+  // التحقق مما إذا كنا ما زلنا في الصفحة نفسها.
+  const samePage = last === name;
+
+  // تحديث اسم آخر صفحة معروضة.
   last = name;
+
+  // وضع اسم الصفحة في data-page داخل body.
+  // يمكن استخدامه في CSS لتخصيص تصميم كل صفحة.
   document.body.dataset.page = name;
+
+  // تحديث عنوان الصفحة الظاهر في الواجهة.
   $('#title').textContent = page.title;
+
+  // استدعاء render وتمرير حالة التطبيق إليها،
+  // ثم وضع HTML الناتج داخل العنصر الذي يحمل id="view".
   $('#view').innerHTML = page.render(store.state);
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.p === name));
-  scrollTo(0, samePage ? y : 0); // ما نقفز لفوق إذا نفس الصفحة
+
+  // تحديث حالة روابط القائمة الجانبية:
+  // الرابط الخاص بالصفحة الحالية يأخذ الكلاس on،
+  // وتُزال هذه الحالة من بقية الروابط.
+  document.querySelectorAll('#nav a').forEach(a => {
+    a.classList.toggle('on', a.dataset.p === name);
+  });
+
+  // إذا كانت الصفحة نفسها، نحاول الاحتفاظ بموضع التمرير.
+  // وإذا انتقل المستخدم إلى صفحة أخرى، نبدأ من أعلى الصفحة.
+  scrollTo(0, samePage ? y : 0);
 }
 
+
+/**
+ * تشغيل نظام التنقل في التطبيق.
+ *
+ * تُستدعى هذه الدالة عادةً مرة واحدة عند بدء تشغيل التطبيق.
+ */
 export function startRouter() {
+
+  // عند تغيير الجزء الخاص بالصفحة في رابط المتصفح،
+  // مثل الانتقال من #/dashboard إلى #/products،
+  // نعيد رسم الصفحة المناسبة.
   addEventListener('hashchange', refresh);
-  store.subscribe(refresh); // أي تغيير بالبيانات = إعادة رسم تلقائية
+
+  // الاشتراك في تغييرات مخزن البيانات.
+  // عند تحديث البيانات، تُستدعى refresh تلقائياً
+  // لإعادة رسم الصفحة باستخدام الحالة الجديدة.
+  store.subscribe(refresh);
+
+  // رسم الصفحة الحالية عند تشغيل التطبيق لأول مرة.
   refresh();
 }

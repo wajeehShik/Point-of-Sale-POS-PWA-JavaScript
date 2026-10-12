@@ -1,17 +1,62 @@
+
 import { store } from '../data/store.js';
-import { deleteTransaction, relatedPayments } from '../services/transactions.js';
+
+// دالة حذف العملية المالية، ودالة جلب السدادات المرتبطة بالدين.
+import {
+  deleteTransaction,
+  relatedPayments
+} from '../services/transactions.js';
+
+// تنسيق المبالغ المالية للعرض بشكل مناسب.
 import { fmt } from '../core/format.js';
+
+// عرض رسائل التنبيه داخل التطبيق.
 import { toast } from './dom.js';
 
-/** يسأل المستخدم ثم يحذف. إذا على الدين سدادات بينبّه إنها بتنحذف معه. يرجع true إذا انحذف */
-export function deleteWithConfirm(id, message = 'حذف هذه العملية؟ ستتحدث الأرصدة والمخزون والأرباح تلقائياً.') {
+/**
+ * حذف عملية مالية بعد سؤال المستخدم للتأكيد.
+ *
+ * id: معرّف العملية التي نريد حذفها.
+ *
+ * message: رسالة التأكيد الافتراضية.
+ *
+ * تعيد true إذا تم الحذف بنجاح، وfalse إذا ألغى المستخدم
+ * العملية أو حدث خطأ أثناء الحذف.
+ */
+export function deleteWithConfirm(
+  id,
+  message = 'حذف هذه العملية؟ ستتحدث الأرصدة والمخزون والأرباح تلقائياً.'
+) {
+  // البحث عن السدادات المرتبطة بالعملية الحالية.
+  // تُستخدم هذه الخطوة لمعرفة ما إذا كان الدين يحتوي على دفعات.
   const pays = relatedPayments(store.state, id);
+
+  // حساب مجموع مبالغ السدادات المرتبطة بالدين.
+  // يبدأ المجموع من صفر، ثم يضيف مبلغ كل سدادة.
   const sum = pays.reduce((a, t) => a + t.amount, 0);
+
+  // إذا وُجدت سدادات، نعرض رسالة خاصة توضّح عددها ومجموعها.
+  // أما إذا لم توجد سدادات، فنستخدم رسالة التأكيد الافتراضية.
   const text = pays.length
     ? `على هذا الدين ${pays.length} سدادات (${fmt(sum)}). سيتم حذفها معه وإرجاع المبلغ لمحافظك. متأكد؟`
     : message;
+
+  // إظهار نافذة تأكيد للمتصفح.
+  // إذا اختار المستخدم الإلغاء، نوقف العملية ونعيد false.
   if (!confirm(text)) return false;
+
+  // تنفيذ حذف العملية بعد موافقة المستخدم.
+  // طريقة الحذف هي المسؤولة عن تحديث البيانات المرتبطة بالعملية.
   const res = deleteTransaction(id);
-  if (res.error) { toast(res.error, true); return false; }
+
+  // إذا أعادت دالة الحذف خطأ، نعرض رسالة للمستخدم
+  // ونوقف التنفيذ مع إرجاع false.
+  if (res.error) {
+    toast(res.error, true);
+    return false;
+  }
+
+  // وصلنا إلى هنا دون إلغاء أو خطأ مُبلّغ عنه.
+  // نعيد true للدلالة على نجاح العملية.
   return true;
 }

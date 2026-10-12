@@ -1,37 +1,192 @@
+
+/**
+ * استيراد أداة اختيار عناصر HTML.
+ * مثال: $('#sheet') تعني العنصر الذي يحمل id="sheet".
+ */
 import { $ } from './dom.js';
+
+// استيراد نظام ربط النقرات بالأحداث، مثل زر إغلاق النافذة.
 import { onClick } from './actions.js';
 
+
+// تخزين الدوال التي تخص النموذج المفتوح حالياً.
+// onSubmit: تُنفذ عند إرسال النموذج.
+// onInput: تُنفذ عند الكتابة أو تعديل قيمة حقل.
+// onChange: تُنفذ عند تغيير قيمة بعض الحقول.
+// onClose: تُنفذ عند إغلاق النافذة.
 let handlers = {};
 
-/** النافذة المنبثقة العامة: تفتح بمحتوى وتستقبل أحداث النموذج */
+
+/**
+ * النافذة المنبثقة العامة في التطبيق.
+ *
+ * نستخدم النافذة نفسها لعرض نماذج مختلفة،
+ * ونغيّر العنوان والمحتوى والدوال التي تستجيب لأحداث النموذج.
+ */
 export const sheet = {
-  open({ title, html = '', onSubmit, onInput, onChange, onClose }) {
-    handlers = { onSubmit, onInput, onChange, onClose };
+
+  /**
+   * فتح النافذة وعرض نموذج بداخلها.
+   *
+   * title: عنوان النافذة.
+   * html: محتوى النموذج بصيغة HTML، وهو اختياري.
+   * onSubmit: دالة معالجة إرسال النموذج.
+   * onInput: دالة معالجة الكتابة وتعديل الحقول.
+   * onChange: دالة معالجة تغيير قيمة الحقول.
+   * onClose: دالة تُنفذ بعد إغلاق النافذة.
+   */
+  open({
+    title,
+    html = '',
+    onSubmit,
+    onInput,
+    onChange,
+    onClose
+  }) {
+
+    // حفظ الدوال الخاصة بالنموذج الحالي،
+    // حتى نستطيع استدعاءها عند حدوث الأحداث.
+    handlers = {
+      onSubmit,
+      onInput,
+      onChange,
+      onClose
+    };
+
+    // تغيير عنوان النافذة.
     $('.bar h3').textContent = title;
+
+    // وضع HTML النموذج داخل العنصر المخصص له.
     $('#form').innerHTML = html;
+
+    // إضافة الكلاس open لإظهار النافذة وفقاً لتنسيقات CSS.
     $('#sheet').classList.add('open');
+
+    // منع تمرير الصفحة الموجودة خلف النافذة.
     document.body.style.overflow = 'hidden';
   },
-  setTitle: t => { $('.bar h3').textContent = t; },
-  setBody: html => { $('#form').innerHTML = html; },
-  get form() { return $('#form'); },
-  get isOpen() { return $('#sheet').classList.contains('open'); },
 
+
+  /**
+   * تغيير عنوان النافذة دون إغلاقها أو فتحها من جديد.
+   */
+  setTitle: t => {
+    $('.bar h3').textContent = t;
+  },
+
+
+  /**
+   * تغيير محتوى النموذج أثناء فتح النافذة.
+   *
+   * مفيد إذا أردنا عرض حقول مختلفة أو تحديث النموذج.
+   */
+  setBody: html => {
+    $('#form').innerHTML = html;
+  },
+
+
+  /**
+   * الحصول على عنصر النموذج الحالي.
+   *
+   * مثال:
+   * const f = sheet.form;
+   * const name = f.elements.pname.value;
+   *
+   * استخدام getter يعني أن العنصر يُجلب عند طلب الخاصية،
+   * بدلاً من حفظ نسخة ثابتة منه عند إنشاء sheet.
+   */
+  get form() {
+    return $('#form');
+  },
+
+
+  /**
+   * التحقق مما إذا كانت النافذة مفتوحة.
+   *
+   * ترجع true إذا كان العنصر يحمل الكلاس open،
+   * وإلا ترجع false.
+   */
+  get isOpen() {
+    return $('#sheet').classList.contains('open');
+  },
+
+
+  /**
+   * إغلاق النافذة وإعادة الصفحة إلى وضعها الطبيعي.
+   */
   close() {
+
+    // إذا كانت النافذة مغلقة أصلاً، فلا حاجة لفعل شيء.
     if (!this.isOpen) return;
+
+    // إزالة الكلاس الذي يجعل النافذة ظاهرة.
     $('#sheet').classList.remove('open');
+
+    // إعادة السماح بتمرير الصفحة.
     document.body.style.overflow = '';
+
+    // حفظ دالة الإغلاق قبل مسح بيانات النموذج الحالي.
     const onClose = handlers.onClose;
+
+    // إزالة مراجع الدوال الخاصة بالنموذج المغلق،
+    // حتى لا تُستخدم بالخطأ مع نموذج آخر.
     handlers = {};
+
+    // تنفيذ دالة الإغلاق إذا كانت موجودة.
+    // العامل ?. يمنع الخطأ إذا لم تُمرر دالة.
     onClose?.();
   },
 
+
+  /**
+   * ربط أحداث النموذج وأحداث لوحة المفاتيح.
+   *
+   * يجب استدعاء bind() مرة واحدة عند تهيئة التطبيق،
+   * وليس في كل مرة تُفتح فيها النافذة.
+   */
   bind() {
+
+    // الحصول على عنصر النموذج الذي يحتوي على الحقول.
     const f = $('#form');
-    f.addEventListener('submit', e => { e.preventDefault(); handlers.onSubmit?.(e); });
-    f.addEventListener('input', e => handlers.onInput?.(e));
-    f.addEventListener('change', e => handlers.onChange?.(e));
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') this.close(); });
-    onClick('sheet-close', () => this.close());
+
+
+    // عند إرسال النموذج، مثلاً بالضغط على زر الحفظ:
+    f.addEventListener('submit', e => {
+
+      // منع المتصفح من إعادة تحميل الصفحة افتراضياً.
+      e.preventDefault();
+
+      // تنفيذ دالة الحفظ الخاصة بالنموذج المفتوح.
+      // إذا لم تُمرر دالة، فلن يحدث شيء.
+      handlers.onSubmit?.(e);
+    });
+
+
+    // عند الكتابة في حقل أو تعديل قيمته:
+    // يمكن استخدام ذلك لتحديث الحسابات مباشرة.
+    f.addEventListener('input', e => {
+      handlers.onInput?.(e);
+    });
+
+
+    // عند تغيير قيمة حقل، مثل select أو بعض حقول التاريخ:
+    f.addEventListener('change', e => {
+      handlers.onChange?.(e);
+    });
+
+
+    // إغلاق النافذة عند الضغط على Escape.
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        this.close();
+      }
+    });
+
+
+    // ربط زر الإغلاق الذي يحمل data-action="sheet-close".
+    // نظام actions.js يتولى اكتشاف الضغط على هذا الزر.
+    onClick('sheet-close', () => {
+      this.close();
+    });
   },
 };
