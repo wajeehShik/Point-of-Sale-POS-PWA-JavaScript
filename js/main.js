@@ -4,7 +4,6 @@
 | أولًا: استيراد الوحدات المسؤولة عن واجهة التطبيق
 |--------------------------------------------------------------------------
 */
-
 // نستورد bindActions من ملف actions.js.
 // من المتوقع أن تربط هذه الدالة إجراءات المستخدم بالأزرار
 // والعناصر التي تستخدم سمات مثل data-action.
@@ -262,5 +261,5 @@ if ('serviceWorker' in navigator) {
   //
   // المسار النسبي 'sw.js' يعتمد على مكان نشر الصفحة
   // والمسار الأساسي للمستند.
-  navigator.serviceWorker.register('sw.js');
+  navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW:', err));
 }

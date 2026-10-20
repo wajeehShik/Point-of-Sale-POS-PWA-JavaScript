@@ -9,6 +9,7 @@ const defaults = () => ({
     { id: 'a2', name: 'PalPay' },
     { id: 'a3', name: 'بنك فلسطين' },
     { id: 'a4', name: 'كاش' },
+    { id: 'a5', name: 'دين' },
   ],
 
   products: [], // قائمة المنتجات

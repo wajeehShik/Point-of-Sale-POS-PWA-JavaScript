@@ -13,7 +13,8 @@ import { install } from '../services/install.js';
 
 // دالة تُنفذ بعد نجاح تسجيل الدخول.
 // افتراضياً لا تفعل شيئاً إلى أن يتم تمرير دالة إليها.
-let afterLogin = () => {};
+let afterLogin = () => {
+};
 
 
 /**
