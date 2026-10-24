@@ -1,29 +1,8 @@
-
-/**
- * تنسيق الأرقام والمبالغ المالية لعرضها للمستخدم.
- */
 import { fmt } from '../../core/format.js';
-
-/**
- * البحث عن منتج باستخدام معرّفه.
- */
 import { findProduct } from '../../domain/lookup.js';
-
-/**
- * حساب الكمية المتوفرة من المنتج في المخزون.
- */
 import { stock } from '../../domain/inventory.js';
-
-/**
- * الوصول إلى عناصر واجهة المستخدم.
- */
 import { $ } from '../dom.js';
-
-/**
- * أدوات مشتركة لإنشاء الحقول وقراءة قيمها وتعديلها.
- */
 import {
-  opts,
   numberField,
   accountField,
   val,
@@ -31,161 +10,149 @@ import {
 } from './fields.js';
 
 export default {
-  /**
-   * بناء واجهة نموذج البيع.
-   * state تحتوي على بيانات التطبيق الحالية،
-   * ومنها المنتجات والحسابات.
-   */
   render({ state }) {
+    const products = state.products || [];
+
     return `
-      <!-- اختيار المنتج المراد بيعه -->
       <label>
-        المنتج
-        <select name="product">
-          ${opts(state.products.map(p => [p.id, p.name]))}
-        </select>
+        ابحث عن المنتج أو اكتب اسم منتج جديد
+        <input
+          name="productName"
+          list="sale-products-list"
+          autocomplete="off"
+          placeholder="اكتب اسم المنتج..."
+          required
+        >
+        <datalist id="sale-products-list">
+          ${products.map(p => `
+            <option value="${String(p.name)
+              .replaceAll('&', '&amp;')
+              .replaceAll('"', '&quot;')
+              .replaceAll('<', '&lt;')
+              .replaceAll('>', '&gt;')}"></option>
+          `).join('')}
+        </datalist>
       </label>
 
-      <!-- إدخال كمية البيع وإجمالي المبلغ المستلم -->
+      <div id="new-product-fields" style="display:none">
+        <div class="note">
+          هذا المنتج غير موجود. أدخل تكلفته ومخزونه الحالي لإضافته.
+        </div>
+        <div class="row">
+          ${numberField('newCost', 'تكلفة الوحدة', '', '0')}
+          ${numberField('newStock', 'المخزون الموجود', '', '1')}
+        </div>
+      </div>
+
       <div class="row">
         ${numberField('qty', 'الكمية', '', '1')}
         ${numberField('amount', 'إجمالي البيع', 'الإجمالي')}
       </div>
 
-      <!-- صندوق يعرض تفاصيل عملية البيع -->
       <div class="sumbox">
-
-        <!-- سعر بيع الوحدة الواحدة -->
         <div class="stat">
           <span>سعر الوحدة</span>
           <b id="tot">—</b>
         </div>
-
-        <!-- تكلفة شراء الوحدة الواحدة -->
         <div class="stat">
           <span>تكلفة الوحدة</span>
           <b id="cst">—</b>
         </div>
-
-        <!-- الربح أو الخسارة المتوقعة من العملية -->
         <div class="stat">
           <span>الربح</span>
           <b id="prf">—</b>
         </div>
-
-        <!-- عرض الكمية المتوفرة في المخزون -->
         <div class="note" id="stk"></div>
       </div>
-    `
-    // اختيار الحساب الذي استلم المال من خلاله.
-    + accountField(state, 'الحساب الذي استلم المال');
+    ` + accountField(state, 'الحساب الذي استلم المال');
   },
 
-  /**
-   * تسجيل أن المستخدم كتب إجمالي البيع يدويًا.
-   * عندها لن نغيّر المبلغ تلقائيًا بناءً على سعر المنتج.
-   */
-  input(f, e) {
+  input(f, e, { state }) {
     if (e.target.name === 'amount') {
       f.dataset.amtT = '1';
     }
+
+    if (e.target.name === 'productName') {
+      const name = val(f, 'productName').trim().toLocaleLowerCase();
+      const product = (state.products || []).find(
+        p => p.name.trim().toLocaleLowerCase() === name
+      );
+
+      const newFields = $('#new-product-fields');
+      if (newFields) {
+        newFields.style.display = name && !product ? 'block' : 'none';
+      }
+
+      if (!product) {
+        f.dataset.amtT = '';
+      }
+    }
   },
 
-  /**
-   * عند تغيير المنتج في عملية بيع جديدة،
-   * نسمح للنظام بتعبئة الإجمالي تلقائيًا من سعر المنتج.
-   *
-   * أما عند تعديل عملية قديمة، فلا نمسح هذه العلامة هنا.
-   */
-  change(f, e, { editId }) {
-    if (e.target.name === 'product' && !editId) {
+  change(f, e) {
+    if (e.target.name === 'productName') {
       f.dataset.amtT = '';
     }
   },
 
-  /**
-   * تحديث الحسابات المعروضة في النموذج.
-   */
   sync(f, { state }) {
-    // البحث عن المنتج الذي اختاره المستخدم.
-    const p = findProduct(state, val(f, 'product'));
+    const name = val(f, 'productName').trim().toLocaleLowerCase();
+    const p = (state.products || []).find(
+      item => item.name.trim().toLocaleLowerCase() === name
+    );
 
-    // قراءة كمية البيع وتحويلها إلى رقم.
-    // إذا كانت القيمة غير صالحة، نستخدم صفرًا.
     const q = +val(f, 'qty') || 0;
 
-    /**
-     * إذا لم يكتب المستخدم الإجمالي يدويًا،
-     * وكان للمنتج سعر بيع صالح والكمية موجبة،
-     * نحسب الإجمالي تلقائيًا:
-     * إجمالي البيع = سعر الوحدة × الكمية.
-     */
     if (!f.dataset.amtT && p && p.price > 0 && q > 0) {
       f.elements.amount.value = +(q * p.price).toFixed(2);
     }
 
-    // قراءة إجمالي البيع.
-    const a = +val(f, 'amount') || 0;
+    const amount = +val(f, 'amount') || 0;
+    const cost = p ? (+p.cost || 0) : (+val(f, 'newCost') || 0);
+    const profit = amount - cost * q;
 
-    // تكلفة الوحدة من بيانات المنتج.
-    const cost = p ? p.cost : 0;
-
-    // الربح المتوقع = إجمالي البيع - تكلفة البضاعة المباعة.
-    const profit = a - cost * q;
-
-    // عرض سعر بيع الوحدة الواحدة.
     $('#tot').textContent =
-      q > 0 && a > 0
-        ? fmt(a / q)
-        : '—';
+      q > 0 && amount > 0 ? fmt(amount / q) : '—';
 
-    // عرض تكلفة شراء الوحدة الواحدة.
     $('#cst').textContent =
-      p
-        ? fmt(cost)
-        : '—';
+      name ? fmt(cost) : '—';
 
-    // الوصول إلى عنصر عرض الربح.
-    const out = $('#prf');
-
-    // لا نحسب الربح المعروض إلا إذا كانت الكمية والإجمالي موجبين.
-    if (q > 0 && a > 0) {
-      // إضافة علامة + إذا كان الربح موجبًا أو صفرًا.
-      out.textContent =
+    const profitElement = $('#prf');
+    if (q > 0 && amount > 0) {
+      profitElement.textContent =
         (profit >= 0 ? '+' : '') + fmt(profit);
-
-      // تمييز الربح والخسارة باستخدام CSS.
-      out.className = profit >= 0 ? 'pos' : 'neg';
+      profitElement.className = profit >= 0 ? 'pos' : 'neg';
     } else {
-      // إخفاء النتيجة إلى أن تصبح البيانات صالحة للعرض.
-      out.textContent = '—';
-      out.className = '';
+      profitElement.textContent = '—';
+      profitElement.className = '';
     }
 
-    // عرض المخزون الحالي للمنتج المختار.
+    const newFields = $('#new-product-fields');
+    if (newFields) {
+      newFields.style.display = name && !p ? 'block' : 'none';
+    }
+
     $('#stk').textContent = p
       ? `المتوفر في المخزون: ${stock(state, p.id)}`
-      : '';
+      : (name
+          ? `مخزون المنتج الجديد: ${+val(f, 'newStock') || 0}`
+          : '');
   },
 
-  /**
-   * تعبئة النموذج ببيانات عملية بيع سابقة عند تعديلها.
-   */
-  fill(f, t) {
-    setValue(f, 'product', t.productId);
+  fill(f, t, { state }) {
+    const product = findProduct(state, t.productId);
+    setValue(f, 'productName', product ? product.name : '');
     setValue(f, 'qty', t.qty);
     setValue(f, 'amount', t.amount);
     setValue(f, 'account', t.account);
   },
 
-  /**
-   * قراءة بيانات النموذج وإعادتها للجزء المسؤول عن الحفظ.
-   * هذه الدالة لا تحفظ العملية بنفسها.
-   */
   read: f => ({
-    productId: val(f, 'product'), // معرّف المنتج المباع
-    qty: val(f, 'qty'),           // الكمية المباعة
-    amount: val(f, 'amount'),     // إجمالي البيع
-    account: val(f, 'account'),   // الحساب الذي استلم المال
-  }),
+    productName: val(f, 'productName').trim(),
+    qty: val(f, 'qty'),
+    amount: val(f, 'amount'),
+    account: val(f, 'account'),
+    newCost: val(f, 'newCost'),
+    newStock: val(f, 'newStock')
+  })
 };

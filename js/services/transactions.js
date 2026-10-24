@@ -140,56 +140,74 @@ const BUILD = {
   // =========================
   // 5. عملية بيع منتج
   // =========================
-  sale(s, d, old) {
-    // قراءة كمية البيع وإجمالي المبلغ
-    const qty = +d.qty;
-    const amount = +d.amount;
+sale(s, d, old) {
+  const qty = +d.qty;
+  const amount = +d.amount;
 
-    // يجب أن تكون الكمية والمبلغ أكبر من صفر
-    if (!(qty > 0 && amount > 0)) {
-      return fail('أدخل الكمية وإجمالي البيع');
+  if (!(qty > 0 && amount > 0)) {
+    return fail('أدخل الكمية وإجمالي البيع');
+  }
+
+  const name = (d.productName || '').trim();
+  if (!name) {
+    return fail('اكتب اسم المنتج');
+  }
+
+  let p = s.products.find(
+    item => item.name.trim().toLocaleLowerCase() ===
+      name.toLocaleLowerCase()
+  );
+
+  // إذا لم يكن المنتج موجوداً، أضفه باستخدام التكلفة والمخزون المدخلين.
+  if (!p) {
+    const cost = +d.newCost;
+    const openingStock = +d.newStock;
+
+    if (!(cost >= 0)) {
+      return fail('أدخل تكلفة صحيحة للمنتج الجديد');
     }
 
-    // البحث عن المنتج الذي يريد المستخدم بيعه
-    const p = findProduct(s, d.productId);
+    if (!(openingStock >= qty)) {
+      return fail('المخزون الابتدائي يجب أن يساوي الكمية المباعة أو يزيد عليها');
+    }
 
-    // رفض العملية إذا لم يتم اختيار منتج صحيح
-    if (!p) return fail('اختر منتجاً');
-
-    // حساب سعر بيع الوحدة الواحدة
-    const unit = amount / qty;
-
-    // التحقق مما إذا كنا نعدّل عملية بيع قديمة للمنتج نفسه
-    const sameProduct =
-      old &&
-      old.type === 'sale' &&
-      old.productId === p.id &&
-      old.qty > 0;
-
-    // حساب تكلفة البضاعة المباعة:
-    // إذا كنا نعدّل البيع نفسه، نستخدم تكلفة الوحدة المحفوظة
-    // في العملية القديمة حتى لا تتغير الأرباح التاريخية.
-    // أما البيع الجديد، فيستخدم تكلفة المنتج الحالية.
-    const cogs = sameProduct
-      ? (old.cogs / old.qty) * qty
-      : p.cost * qty;
-
-    return {
-      tx: {
-        sector: 'invest',
-        productId: p.id,
-        qty,
-        amount,
-        unit,
-        cogs // تكلفة الكمية التي تم بيعها
-      },
-
-      // بعد تجهيز العملية، حدّث سعر المنتج إلى آخر سعر بيع
-      after: () => {
-        p.price = unit;
-      }
+    p = {
+      id: newId(),
+      name,
+      cost,
+      price: 0,
+      qty0: openingStock,
+      min: 0
     };
-  },
+
+    s.products.push(p);
+  }
+
+  const sameProduct =
+    old &&
+    old.type === 'sale' &&
+    old.productId === p.id &&
+    old.qty > 0;
+
+  const unit = amount / qty;
+  const cogs = sameProduct
+    ? (old.cogs / old.qty) * qty
+    : p.cost * qty;
+
+  return {
+    tx: {
+      sector: 'invest',
+      productId: p.id,
+      qty,
+      amount,
+      unit,
+      cogs
+    },
+    after: () => {
+      p.price = unit;
+    }
+  };
+},
 
   // =========================
   // 6. عملية شراء منتج

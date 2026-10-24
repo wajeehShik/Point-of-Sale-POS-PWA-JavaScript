@@ -13,7 +13,7 @@
 //
 // مهم: تغيير هذا الاسم وحده لا يحدّث التطبيق على كل الأجهزة فورًا؛
 // بل يجب أن تتم عملية تثبيت وتفعيل Service Worker الجديد.
-const V = 'mali-v21';
+const V = 'mali-v22';
 
 
 /*
@@ -73,6 +73,7 @@ const FILES = [
   'js/services/export.js',
   'js/services/auth.js',
   'js/services/install.js',
+  'js/services/autobackup.js',
 
   // ملفات عناصر الواجهة والتفاعل والتنقل.
   'js/ui/dom.js',

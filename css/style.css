@@ -261,3 +261,11 @@ main{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 .row-i[data-action]{cursor:pointer}
 .row-i[data-action]:active{background:var(--bg)}
 button[data-action]{touch-action:manipulation}
+
+.abcard { background:#fff; border-radius:16px; padding:16px; margin:16px 0; }
+.abcard select { width:100%; padding:10px; margin:6px 0 12px; border-radius:10px; }
+.abnote { font-size:.85rem; opacity:.7; margin:0 0 12px; }
+.ablist { margin-top:8px; }
+.abrow { display:flex; justify-content:space-between; align-items:center;
+         padding:10px 0; border-bottom:1px solid #e5e7eb; font-size:.9rem; }
+.abbtn { border:0; background:#166534; color:#fff; padding:6px 12px; border-radius:8px; }
