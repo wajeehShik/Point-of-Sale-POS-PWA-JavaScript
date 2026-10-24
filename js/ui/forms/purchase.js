@@ -1,25 +1,6 @@
-
-/**
- * استيراد دالة تنسيق الأرقام والمبالغ المالية.
- * مثال: عرض تكلفة الوحدة بطريقة مناسبة للمستخدم.
- */
 import { fmt } from '../../core/format.js';
-
-/**
- * جلب أسماء المورّدين السابقين من بيانات التطبيق،
- * حتى تظهر اقتراحات عند كتابة اسم المورّد.
- */
 import { supplierNames } from '../../domain/lookup.js';
-
-/**
- * esc: حماية النصوص عند إدخالها داخل HTML.
- * $: الوصول إلى عنصر في الصفحة باستخدام المحدد.
- */
 import { esc, $ } from '../dom.js';
-
-/**
- * أدوات مشتركة لبناء حقول النموذج وقراءة قيمها وتعديلها.
- */
 import {
   opts,
   numberField,
@@ -29,20 +10,12 @@ import {
 } from './fields.js';
 
 export default {
-  /**
-   * إنشاء واجهة نموذج شراء المنتجات.
-   * يستقبل state، وهي حالة التطبيق الحالية،
-   * وتحتوي على المنتجات والحسابات وغيرها.
-   */
   render({ state }) {
-    // تجهيز أسماء المورّدين السابقين لتظهر كاقتراحات.
-    // esc تمنع إدخال نص غير آمن داخل HTML.
     const names = supplierNames(state)
-      .map(n => `<option value="${esc(n)}">`)
+      .map(name => `<option value="${esc(name)}">`)
       .join('');
 
     return `
-      <!-- اختيار منتج موجود أو إضافة منتج جديد -->
       <label>
         المنتج
         <select name="product">
@@ -51,132 +24,133 @@ export default {
         </select>
       </label>
 
-      <!-- يظهر هذا الحقل فقط عند اختيار منتج جديد -->
       <label id="newp" style="display:none">
         اسم المنتج الجديد
         <input name="newname">
       </label>
 
-      <!-- إدخال الكمية والمبلغ الإجمالي للشراء -->
+      <label>
+        طريقة إدخال السعر
+        <select name="priceMode">
+          <option value="total">إدخال المبلغ الإجمالي</option>
+          <option value="unit">إدخال سعر القطعة الواحدة</option>
+        </select>
+      </label>
+
       <div class="row">
-        ${numberField('qty', 'الكمية', 'الكمية')}
-        ${numberField('amount', 'المبلغ الإجمالي', 'الإجمالي')}
+        ${numberField('qty', 'الكمية', 'مثال: 5', '1')}
+
+        <div id="total-price-field">
+          ${numberField('amount', 'المبلغ الإجمالي', 'مثال: 50')}
+        </div>
+
+        <div id="unit-price-field" style="display:none">
+          ${numberField('unitPrice', 'سعر القطعة الواحدة', 'مثال: 10')}
+        </div>
       </div>
 
-      <!-- عرض تكلفة شراء الوحدة الواحدة تلقائيًا -->
       <div class="total">
-        تكلفة الوحدة:
+        المبلغ الإجمالي المحسوب:
+        <b id="purchase-total">—</b>
+      </div>
+
+      <div class="total">
+        تكلفة القطعة الواحدة:
         <b id="tot">—</b>
       </div>
 
-      <!-- تحديد ما إذا كان الشراء بالدين -->
       <label class="chk">
         <input type="checkbox" name="credit">
         <span>اشتريتها بالدين (لم أدفع بعد)</span>
       </label>
 
-      <!-- اسم المورّد اختياري، ويظهر عند اختيار الشراء بالدين -->
       <label id="supl" style="display:none">
         اسم المورّد (اختياري)
         <input name="supplier" list="sups" autocomplete="off">
-
-        <!-- اقتراح أسماء المورّدين السابقين -->
         <datalist id="sups">
           ${names}
         </datalist>
       </label>
 
-      <!-- اختيار الحساب الذي خرج منه المبلغ.
-           يُخفى عند الشراء بالدين لأن الدفع لم يحدث بعد. -->
       <div id="accl">
         ${accountField(state, 'الحساب الذي دُفع منه')}
       </div>
     `;
   },
 
-  /**
-   * تحديث واجهة النموذج عند تغيير الكمية أو المبلغ
-   * أو اختيار المنتج أو تغيير حالة الشراء بالدين.
-   */
   sync(f) {
-    // تحويل الكمية والمبلغ إلى أرقام.
-    const q = +val(f, 'qty');
-    const a = +val(f, 'amount');
+    const qty = +val(f, 'qty') || 0;
+    const mode = val(f, 'priceMode');
+    const amountField = $('#total-price-field');
+    const unitField = $('#unit-price-field');
 
-    // معرفة ما إذا كان الشراء بالدين.
-    const credit = f.elements.credit.checked;
+    amountField.style.display = mode === 'total' ? 'block' : 'none';
+    unitField.style.display = mode === 'unit' ? 'block' : 'none';
 
-    // حساب تكلفة الوحدة = المبلغ الإجمالي ÷ الكمية.
-    // لا نحسب إذا كانت الكمية أو القيمة غير موجبة.
+    let amount = 0;
+    let unitPrice = 0;
+
+    if (mode === 'unit') {
+      unitPrice = +val(f, 'unitPrice') || 0;
+      amount = qty * unitPrice;
+
+      // حدّث الإجمالي المحفوظ بالنموذج تلقائيًا.
+      f.elements.amount.value =
+        amount > 0 ? amount.toFixed(2) : '';
+    } else {
+      amount = +val(f, 'amount') || 0;
+      unitPrice = qty > 0 ? amount / qty : 0;
+
+      // حدّث سعر القطعة المحسوب تلقائيًا.
+      f.elements.unitPrice.value =
+        unitPrice > 0 ? unitPrice.toFixed(2) : '';
+    }
+
+    $('#purchase-total').textContent =
+      amount > 0 ? fmt(amount) : '—';
+
     $('#tot').textContent =
-      q > 0 && a > 0
-        ? fmt(a / q)
-        : '—';
+      unitPrice > 0 ? fmt(unitPrice) : '—';
 
-    // إظهار حقل اسم المنتج الجديد عند اختياره.
-    $('#newp').style.display =
-      val(f, 'product') === '__new'
-        ? 'block'
-        : 'none';
+    const isNewProduct = val(f, 'product') === '__new';
+    $('#newp').style.display = isNewProduct ? 'block' : 'none';
 
-    // إظهار اسم المورّد عند الشراء بالدين.
-    $('#supl').style.display =
-      credit
-        ? 'block'
-        : 'none';
-
-    // إخفاء اختيار الحساب عند الشراء بالدين،
-    // لأن المبلغ لم يُدفع بعد.
-    $('#accl').style.display =
-      credit
-        ? 'none'
-        : 'block';
+    const credit = f.elements.credit.checked;
+    $('#supl').style.display = credit ? 'block' : 'none';
+    $('#accl').style.display = credit ? 'none' : 'block';
   },
 
-  /**
-   * تعبئة النموذج ببيانات عملية شراء سابقة،
-   * مثلاً عندما يريد المستخدم تعديل العملية.
-   */
   fill(f, t) {
-    // تحديد المنتج والكمية والمبلغ الإجمالي.
     setValue(f, 'product', t.productId);
     setValue(f, 'qty', t.qty);
     setValue(f, 'amount', t.amount);
 
-    // استعادة حالة الشراء بالدين.
-    // !! تحول القيمة إلى true أو false.
-    f.elements.credit.checked = !!t.credit;
+    const qty = +t.qty || 0;
+    const unitPrice = qty > 0 ? (+t.amount || 0) / qty : 0;
+    setValue(f, 'unitPrice', unitPrice.toFixed(2));
+    setValue(f, 'priceMode', 'total');
 
-    // استعادة اسم المورّد والحساب.
+    f.elements.credit.checked = !!t.credit;
     setValue(f, 'supplier', t.supplier);
     setValue(f, 'account', t.account);
   },
 
-  /**
-   * قراءة بيانات النموذج وتجهيزها للحفظ.
-   * لا تحفظ هذه الدالة البيانات بنفسها؛
-   * بل تعيد القيم للجزء المسؤول عن حفظ العملية.
-   */
-  read: f => ({
-    // معرّف المنتج المختار، أو "__new" إذا كان منتجًا جديدًا.
-    productId: val(f, 'product'),
+  read: f => {
+    const qty = +val(f, 'qty') || 0;
+    const mode = val(f, 'priceMode');
 
-    // اسم المنتج الجديد إذا أدخله المستخدم.
-    newName: val(f, 'newname'),
+    const amount = mode === 'unit'
+      ? qty * (+val(f, 'unitPrice') || 0)
+      : (+val(f, 'amount') || 0);
 
-    // كمية المنتجات المشتراة.
-    qty: val(f, 'qty'),
-
-    // المبلغ الإجمالي للشراء.
-    amount: val(f, 'amount'),
-
-    // هل تم الشراء بالدين؟
-    credit: f.elements.credit.checked,
-
-    // اسم المورّد، إن وُجد.
-    supplier: val(f, 'supplier'),
-
-    // الحساب الذي دُفع منه المبلغ عند الشراء النقدي.
-    account: val(f, 'account'),
-  }),
+    return {
+      productId: val(f, 'product'),
+      newName: val(f, 'newname'),
+      qty: val(f, 'qty'),
+      amount: amount.toFixed(2),
+      credit: f.elements.credit.checked,
+      supplier: val(f, 'supplier'),
+      account: val(f, 'account')
+    };
+  }
 };
