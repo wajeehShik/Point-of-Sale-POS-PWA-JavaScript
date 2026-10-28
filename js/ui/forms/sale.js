@@ -1,7 +1,7 @@
 import { fmt } from '../../core/format.js';
 import { findProduct } from '../../domain/lookup.js';
 import { stock } from '../../domain/inventory.js';
-import { $ } from '../dom.js';
+import {  esc,$ } from '../dom.js';
 import {
   numberField,
   accountField,
@@ -14,25 +14,31 @@ export default {
     const products = state.products || [];
 
     return `
-      <label>
-        ابحث عن المنتج أو اكتب اسم منتج جديد
-        <input
-          name="productName"
-          list="sale-products-list"
-          autocomplete="off"
-          placeholder="اكتب اسم المنتج..."
-          required
-        >
-        <datalist id="sale-products-list">
-          ${products.map(p => `
-            <option value="${String(p.name)
-              .replaceAll('&', '&amp;')
-              .replaceAll('"', '&quot;')
-              .replaceAll('<', '&lt;')
-              .replaceAll('>', '&gt;')}"></option>
-          `).join('')}
-        </datalist>
-      </label>
+    <label>
+  المنتج
+  <div class="product-search">
+    <input
+      name="productName"
+      list="product-options"
+      autocomplete="off"
+      placeholder="ابحث باسم المنتج..."
+    >
+    <button
+      type="button"
+      class="clear-product"
+      data-action="clear-product-name"
+      aria-label="مسح اسم المنتج"
+      title="مسح"
+    >×</button>
+  </div>
+
+  <datalist id="product-options">
+    ${state.products.map(product => `
+      <option value="${esc(product.name)}"></option>
+    `).join('')}
+  </datalist>
+</label>
+
 
       <div id="new-product-fields" style="display:none">
         <div class="note">

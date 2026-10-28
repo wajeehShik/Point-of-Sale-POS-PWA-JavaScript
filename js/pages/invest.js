@@ -1,4 +1,3 @@
-
 /* عدد المنتجات المعروضة افتراضيًا، وعدد الموردين المعروضين افتراضيًا */
 const PLIM = 6, DLIM = 3;
 
@@ -13,8 +12,8 @@ function prodHTML() {
 
   // تجهيز قائمة المنتجات مع حساب الكمية المتوفرة في المخزون لكل منتج
   let ps = DB.s.products.map(p => ({
-    p, // بيانات المنتج نفسه
-    q: E.stock(p.id), // الكمية الحالية المتوفرة في المخزون
+    p,
+    q: E.stock(p.id),
   }));
 
   // ترتيب المنتجات بحيث تظهر المنتجات منخفضة المخزون أولًا،
@@ -26,7 +25,9 @@ function prodHTML() {
   );
 
   // إذا كتب المستخدم اسمًا للبحث، نعرض المنتجات التي يحتوي اسمها عليه
-  if (q) ps = ps.filter(x => x.p.name.toLowerCase().includes(q));
+  if (q) {
+    ps = ps.filter(x => x.p.name.toLowerCase().includes(q));
+  }
 
   // إذا لم توجد نتائج، نعرض رسالة مناسبة للمستخدم
   if (!ps.length) {
@@ -69,18 +70,16 @@ function prodHTML() {
 
       <span class="chev">‹</span>
     </div>`;
-  }).join(''); // دمج جميع صفوف المنتجات في نص HTML واحد
+  }).join('');
 
   // تجهيز زر عرض الكل أو عرض عدد أقل من المنتجات
   let btn = '';
 
   if (ps.length > lim) {
-    // يظهر إذا كانت هناك منتجات إضافية غير معروضة
     btn = `<button class="btn alt" data-pall>
       عرض كل المنتجات (${ps.length})
     </button>`;
   } else if (UI.pAll && !q && ps.length > PLIM) {
-    // يظهر عند عرض كل المنتجات، للعودة إلى العرض المختصر
     btn = `<button class="btn alt" data-pall>عرض أقل</button>`;
   }
 
@@ -91,44 +90,43 @@ function prodHTML() {
 
 // تحديث قائمة المنتجات عند كتابة نص في مربع البحث
 function prodSearch(v) {
-  UI.pq = v; // حفظ نص البحث في حالة الواجهة
-  document.getElementById('plist').innerHTML = prodHTML(); // إعادة رسم القائمة
+  UI.pq = v;
+  document.getElementById('plist').innerHTML = prodHTML();
 }
 
 
 /* تجميع الديون المستحقة حسب اسم المورد */
 function supGroups() {
-  const m = {}; // كائن لتجميع الديون الخاصة بكل مورد
+  const m = {};
 
   // استخراج الديون التي ما زال لها مبلغ غير مسدد
   E.debts().filter(d => d.left > 0.005).forEach(d => {
-    const k = d.t.supplier || ''; // اسم المورد، أو نص فارغ إذا لم يُحدد
+    const k = d.t.supplier || '';
 
     // إنشاء مجموعة جديدة للمورد عند ظهوره لأول مرة
     // أو استخدام المجموعة الموجودة إذا كان له أكثر من دين
     const g = m[k] || (m[k] = {
-      k, // اسم المورد
-      n: 0, // عدد الديون المستحقة له
-      left: 0, // إجمالي المبلغ المتبقي له
-      first: d.t.date, // تاريخ أقدم دين
+      k,
+      n: 0,
+      left: 0,
+      first: d.t.date,
     });
 
-    g.n++; // زيادة عدد الديون الخاصة بهذا المورد
-    g.left += d.left; // إضافة المبلغ المتبقي إلى إجمالي ديونه
+    g.n++;
+    g.left += d.left;
 
     // الاحتفاظ بتاريخ أقدم دين للمورد
     if (d.t.date < g.first) g.first = d.t.date;
   });
 
-  // تحويل المجموعات إلى مصفوفة وترتيب الموردين حسب إجمالي الدين،
-  // من أكبر مبلغ مستحق إلى أصغره
+  // ترتيب الموردين حسب إجمالي الدين، من الأكبر إلى الأصغر
   return Object.values(m).sort((a, b) => b.left - a.left);
 }
 
 
 // إنشاء HTML لقائمة الديون المستحقة للموردين
 function debtsHTML() {
-  const gs = supGroups(); // الحصول على الديون مجمعة حسب المورد
+  const gs = supGroups();
 
   // إذا لم توجد ديون مستحقة، لا نعرض قسم الديون
   if (!gs.length) return '';
@@ -136,9 +134,10 @@ function debtsHTML() {
   // حساب إجمالي الديون المستحقة لجميع الموردين
   const tot = gs.reduce((s, g) => s + g.left, 0);
 
-  // إذا اختار المستخدم عرض الكل، أو كان عدد الموردين قليلًا،
-  // نعرض الجميع؛ وإلا نعرض DLIM موردين فقط
-  const lim = (UI.dAll || gs.length <= DLIM + 1) ? gs.length : DLIM;
+  // تحديد عدد الموردين المعروضين
+  const lim = (UI.dAll || gs.length <= DLIM + 1)
+    ? gs.length
+    : DLIM;
 
   // إنشاء صف لكل مورد ضمن العدد المطلوب عرضه
   const rows = gs.slice(0, lim).map(g => `
@@ -189,10 +188,10 @@ function debtsHTML() {
 // شرح كيفية حساب الرصيد النقدي والقيمة الإجمالية للاستثمار
 function flowHTML() {
   // استخراج مكونات حركة الأموال والقيم الحالية للاستثمار
-  const f = E.flow(); // ملخص حركة الأموال
-  const bal = E.bal().invest; // الرصيد النقدي الحالي للاستثمار
-  const inv = E.inventoryValue(); // قيمة المخزون بسعر التكلفة
-  const debt = E.debtTotal(); // إجمالي الديون المتبقية للموردين
+  const f = E.flow();
+  const bal = E.bal().invest;
+  const inv = E.inventoryValue();
+  const debt = E.debtTotal();
 
   // دالة مساعدة لإنشاء صف يعرض اسم البند وقيمته ولونه
   const L = (l, v, c) =>
@@ -265,6 +264,12 @@ R.reg('invest', 'الاستثمار', () => {
   // استخراج الأرصدة والفترة المختارة وملخص الاستثمار لهذه الفترة
   const b = E.bal(), pre = perPrefix(), m = E.period(pre).invest;
 
+  // رأس المال الذي أدخلته كإيراد في الصفحة الرئيسية.
+  // يجمع إيرادات قسم البيت فقط، ولا يتغير بسبب عمليات الاستثمار.
+  const capital = DB.s.tx
+    .filter(t => t.type === 'income' && t.sector === 'home')
+    .reduce((total, t) => total + (+t.amount || 0), 0);
+
   // عدد المنتجات المسجلة
   const n = DB.s.products.length;
 
@@ -274,7 +279,6 @@ R.reg('invest', 'الاستثمار', () => {
   ).length;
 
   // حساب ربح المبيعات قبل خصم المصاريف
-  // المبيعات ناقص تكلفة البضاعة التي تم بيعها
   const gross = m.sales - m.cogs;
 
   // إنشاء محتوى صفحة الاستثمار
@@ -283,10 +287,17 @@ R.reg('invest', 'الاستثمار', () => {
     <h1>${fmt(b.invest)}</h1>
   </section>
 
-  ${periodBar()} <!-- شريط اختيار الفترة الزمنية -->
+  ${periodBar()}
 
   <!-- بطاقات الملخص المالي للاستثمار -->
   <div class="grid">
+
+    <!-- صندوق رأس المال المحطوط من إيرادات الصفحة الرئيسية -->
+    <div class="card hl">
+      <small>رأس المال المحطوط</small>
+      <b>${fmt(capital)}</b>
+    </div>
+
     <div class="card">
       <small>قيمة المخزون</small>
       <b>${fmt(E.inventoryValue())}</b>
@@ -335,9 +346,9 @@ R.reg('invest', 'الاستثمار', () => {
     </div>
   </div>
 
-  ${flowHTML()} <!-- شرح حساب الرصيد والقيمة الإجمالية للاستثمار -->
+  ${flowHTML()}
 
-  ${debtsHTML()} <!-- عرض الديون المستحقة للموردين -->
+  ${debtsHTML()}
 
   <!-- عنوان المنتجات وعددها، مع تنبيه عند انخفاض المخزون -->
   <h3>

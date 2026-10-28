@@ -269,3 +269,45 @@ button[data-action]{touch-action:manipulation}
 .abrow { display:flex; justify-content:space-between; align-items:center;
          padding:10px 0; border-bottom:1px solid #e5e7eb; font-size:.9rem; }
 .abbtn { border:0; background:#166534; color:#fff; padding:6px 12px; border-radius:8px; }
+
+
+.product-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  direction: rtl;
+}
+
+.product-search input {
+  flex: 1;
+  min-width: 0;
+}
+
+.product-search .clear-product {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line, #d9e0e7);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  color: var(--muted, #64748b);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.product-search .clear-product:hover {
+  color: var(--danger, #dc2626);
+  border-color: var(--danger, #dc2626);
+}
+
+#total-price-field,
+#unit-price-field {
+  min-width: 0;
+  flex: 1;
+}
+
+#total-price-field label,
+#unit-price-field label {
+  margin: 0;
+}

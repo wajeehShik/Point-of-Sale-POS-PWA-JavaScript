@@ -2,7 +2,6 @@ import { fmt } from '../../core/format.js';
 import { supplierNames } from '../../domain/lookup.js';
 import { esc, $ } from '../dom.js';
 import {
-  opts,
   numberField,
   accountField,
   val,
@@ -11,23 +10,47 @@ import {
 
 export default {
   render({ state }) {
-    const names = supplierNames(state)
+    const products = state.products || [];
+
+    const productOptions = products
+      .map(product => `<option value="${esc(product.name)}"></option>`)
+      .join('');
+
+    const supplierOptions = supplierNames(state)
       .map(name => `<option value="${esc(name)}">`)
       .join('');
 
     return `
-      <label>
-        المنتج
-        <select name="product">
-          ${opts(state.products.map(p => [p.id, p.name]))}
-          <option value="__new">＋ منتج جديد</option>
-        </select>
-      </label>
+     <label>
+  المنتج
+  <div class="product-search">
+    <input
+      name="productName"
+      list="product-options"
+      autocomplete="off"
+      placeholder="ابحث باسم المنتج..."
+    >
+    <button
+      type="button"
+      class="clear-product"
+      data-action="clear-product-name"
+      aria-label="مسح اسم المنتج"
+      title="مسح"
+    >×</button>
+  </div>
 
-      <label id="newp" style="display:none">
-        اسم المنتج الجديد
-        <input name="newname">
-      </label>
+  <datalist id="product-options">
+    ${state.products.map(product => `
+      <option value="${esc(product.name)}"></option>
+    `).join('')}
+  </datalist>
+</label>
+
+      <div id="new-product-fields" style="display:none">
+        <div class="note">
+          هذا المنتج غير موجود. سيُضاف تلقائيًا عند حفظ عملية الشراء.
+        </div>
+      </div>
 
       <label>
         طريقة إدخال السعر
@@ -68,7 +91,7 @@ export default {
         اسم المورّد (اختياري)
         <input name="supplier" list="sups" autocomplete="off">
         <datalist id="sups">
-          ${names}
+          ${supplierOptions}
         </datalist>
       </label>
 
@@ -78,14 +101,59 @@ export default {
     `;
   },
 
+  input(f, e, { state }) {
+    if (e.target.name !== 'productName') return;
+
+    const enteredName = (e.target.value || '')
+      .trim()
+      .toLocaleLowerCase();
+
+    const existingProduct = (state.products || []).find(product =>
+      product.name.trim().toLocaleLowerCase() === enteredName
+    );
+
+    const newProductFields = $('#new-product-fields');
+
+    if (newProductFields) {
+      newProductFields.style.display =
+        enteredName && !existingProduct ? 'block' : 'none';
+    }
+  },
+
+  click(f, e) {
+    const clearButton = e.target.closest(
+      '[data-action="clear-product-name"]'
+    );
+
+    if (!clearButton) return;
+
+    f.elements.productName.value = '';
+    f.elements.productName.focus();
+
+    const newProductFields = $('#new-product-fields');
+    if (newProductFields) {
+      newProductFields.style.display = 'none';
+    }
+
+    this.sync(f);
+  },
+
   sync(f) {
     const qty = +val(f, 'qty') || 0;
     const mode = val(f, 'priceMode');
-    const amountField = $('#total-price-field');
-    const unitField = $('#unit-price-field');
 
-    amountField.style.display = mode === 'total' ? 'block' : 'none';
-    unitField.style.display = mode === 'unit' ? 'block' : 'none';
+    const totalPriceField = $('#total-price-field');
+    const unitPriceField = $('#unit-price-field');
+
+    if (totalPriceField) {
+      totalPriceField.style.display =
+        mode === 'total' ? 'block' : 'none';
+    }
+
+    if (unitPriceField) {
+      unitPriceField.style.display =
+        mode === 'unit' ? 'block' : 'none';
+    }
 
     let amount = 0;
     let unitPrice = 0;
@@ -94,48 +162,63 @@ export default {
       unitPrice = +val(f, 'unitPrice') || 0;
       amount = qty * unitPrice;
 
-      // حدّث الإجمالي المحفوظ بالنموذج تلقائيًا.
       f.elements.amount.value =
         amount > 0 ? amount.toFixed(2) : '';
     } else {
       amount = +val(f, 'amount') || 0;
       unitPrice = qty > 0 ? amount / qty : 0;
 
-      // حدّث سعر القطعة المحسوب تلقائيًا.
       f.elements.unitPrice.value =
         unitPrice > 0 ? unitPrice.toFixed(2) : '';
     }
 
-    $('#purchase-total').textContent =
-      amount > 0 ? fmt(amount) : '—';
+    const totalElement = $('#purchase-total');
+    if (totalElement) {
+      totalElement.textContent =
+        amount > 0 ? fmt(amount) : '—';
+    }
 
-    $('#tot').textContent =
-      unitPrice > 0 ? fmt(unitPrice) : '—';
+    const unitElement = $('#tot');
+    if (unitElement) {
+      unitElement.textContent =
+        unitPrice > 0 ? fmt(unitPrice) : '—';
+    }
 
-    const isNewProduct = val(f, 'product') === '__new';
-    $('#newp').style.display = isNewProduct ? 'block' : 'none';
+    const isCredit = f.elements.credit.checked;
 
-    const credit = f.elements.credit.checked;
-    $('#supl').style.display = credit ? 'block' : 'none';
-    $('#accl').style.display = credit ? 'none' : 'block';
+    $('#supl').style.display = isCredit ? 'block' : 'none';
+    $('#accl').style.display = isCredit ? 'none' : 'block';
   },
 
-  fill(f, t) {
-    setValue(f, 'product', t.productId);
+  fill(f, t, { state }) {
+    const product = (state.products || []).find(
+      item => item.id === t.productId
+    );
+
+    setValue(f, 'productName', product ? product.name : '');
     setValue(f, 'qty', t.qty);
     setValue(f, 'amount', t.amount);
 
     const qty = +t.qty || 0;
-    const unitPrice = qty > 0 ? (+t.amount || 0) / qty : 0;
+    const unitPrice = qty > 0
+      ? (+t.amount || 0) / qty
+      : 0;
+
     setValue(f, 'unitPrice', unitPrice.toFixed(2));
     setValue(f, 'priceMode', 'total');
 
     f.elements.credit.checked = !!t.credit;
+
     setValue(f, 'supplier', t.supplier);
     setValue(f, 'account', t.account);
+
+    const newProductFields = $('#new-product-fields');
+    if (newProductFields) {
+      newProductFields.style.display = 'none';
+    }
   },
 
-  read: f => {
+  read(f) {
     const qty = +val(f, 'qty') || 0;
     const mode = val(f, 'priceMode');
 
@@ -143,9 +226,12 @@ export default {
       ? qty * (+val(f, 'unitPrice') || 0)
       : (+val(f, 'amount') || 0);
 
+    const productName = val(f, 'productName').trim();
+
     return {
-      productId: val(f, 'product'),
-      newName: val(f, 'newname'),
+      productName,
+      newName: productName,
+      productId: '',
       qty: val(f, 'qty'),
       amount: amount.toFixed(2),
       credit: f.elements.credit.checked,

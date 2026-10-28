@@ -150,6 +150,16 @@ const savebar = () => `
     }
   </div>
 `;
+onClick('clear-product-name', (_data, button) => {
+  const label = button.closest('label');
+  const input = label?.querySelector('input[name="productName"]');
+
+  if (!input) return;
+
+  input.value = '';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
+});
 
 
 /**
