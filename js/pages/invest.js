@@ -2,34 +2,32 @@
 const PLIM = 6, DLIM = 3;
 
 
+/* حساب رأس المال المسجل كإيرادات في الصفحة الرئيسية */
+function getHomeCapital() {
+  return (DB.s.tx || [])
+    .filter(t => t.type === 'income' && t.sector === 'home')
+    .reduce((total, t) => total + (+t.amount || 0), 0);
+}
+
+
 // إنشاء HTML لقائمة المنتجات في صفحة الاستثمار
 function prodHTML() {
-  // قراءة نص البحث عن المنتجات وتحويله إلى أحرف صغيرة
   const q = (UI.pq || '').trim().toLowerCase();
-
-  // التحقق مما إذا كانت كمية المنتج منخفضة أو وصلت إلى الحد الأدنى
   const low = x => x.q <= (x.p.min || 0);
 
-  // تجهيز قائمة المنتجات مع حساب الكمية المتوفرة في المخزون لكل منتج
   let ps = DB.s.products.map(p => ({
     p,
     q: E.stock(p.id),
   }));
 
-  // ترتيب المنتجات بحيث تظهر المنتجات منخفضة المخزون أولًا،
-  // ثم ترتيب المنتجات حسب الاسم باللغة العربية
   ps.sort((a, b) =>
     low(a) === low(b)
       ? a.p.name.localeCompare(b.p.name, 'ar')
       : low(a) ? -1 : 1
   );
 
-  // إذا كتب المستخدم اسمًا للبحث، نعرض المنتجات التي يحتوي اسمها عليه
-  if (q) {
-    ps = ps.filter(x => x.p.name.toLowerCase().includes(q));
-  }
+  if (q) ps = ps.filter(x => x.p.name.toLowerCase().includes(q));
 
-  // إذا لم توجد نتائج، نعرض رسالة مناسبة للمستخدم
   if (!ps.length) {
     return `<div class="list">
       <div class="empty">
@@ -40,39 +38,27 @@ function prodHTML() {
     </div>`;
   }
 
-  // عند البحث أو اختيار عرض الكل، نعرض كل النتائج،
-  // وإلا نكتفي بعدد المنتجات المحدد في PLIM
   const lim = (UI.pAll || q) ? ps.length : PLIM;
 
-  // إنشاء صف HTML لكل منتج ضمن العدد المطلوب عرضه
   const rows = ps.slice(0, lim).map(x => {
-    // حساب الربح المتوقع من بيع وحدة واحدة قبل أي مصاريف أخرى
     const u = x.p.price - x.p.cost;
 
     return `<div class="row-i" data-prod="${x.p.id}">
       <span class="ic">🏷️</span>
-
       <div class="mid">
         ${esc(x.p.name)}
-
-        <!-- إظهار شارة نفاد المخزون إذا كانت الكمية صفرًا أو أقل -->
         ${x.q <= 0 ? '<em class="bdg">نفد</em>' : ''}
-
         <span>
           تكلفة ${fmt(x.p.cost)} ·
           بيع ${fmt(x.p.price)} ·
           ربح ${fmt(u)}
         </span>
       </div>
-
-      <!-- تمييز الكمية إذا كانت منخفضة -->
       <b class="${low(x) ? 'warn' : ''}">${x.q}</b>
-
       <span class="chev">‹</span>
     </div>`;
   }).join('');
 
-  // تجهيز زر عرض الكل أو عرض عدد أقل من المنتجات
   let btn = '';
 
   if (ps.length > lim) {
@@ -83,7 +69,6 @@ function prodHTML() {
     btn = `<button class="btn alt" data-pall>عرض أقل</button>`;
   }
 
-  // إرجاع قائمة المنتجات مع زر التحكم في عدد النتائج
   return `<div class="list">${rows}</div>${btn}`;
 }
 
@@ -99,12 +84,9 @@ function prodSearch(v) {
 function supGroups() {
   const m = {};
 
-  // استخراج الديون التي ما زال لها مبلغ غير مسدد
   E.debts().filter(d => d.left > 0.005).forEach(d => {
     const k = d.t.supplier || '';
 
-    // إنشاء مجموعة جديدة للمورد عند ظهوره لأول مرة
-    // أو استخدام المجموعة الموجودة إذا كان له أكثر من دين
     const g = m[k] || (m[k] = {
       k,
       n: 0,
@@ -115,11 +97,9 @@ function supGroups() {
     g.n++;
     g.left += d.left;
 
-    // الاحتفاظ بتاريخ أقدم دين للمورد
     if (d.t.date < g.first) g.first = d.t.date;
   });
 
-  // ترتيب الموردين حسب إجمالي الدين، من الأكبر إلى الأصغر
   return Object.values(m).sort((a, b) => b.left - a.left);
 }
 
@@ -128,39 +108,26 @@ function supGroups() {
 function debtsHTML() {
   const gs = supGroups();
 
-  // إذا لم توجد ديون مستحقة، لا نعرض قسم الديون
   if (!gs.length) return '';
 
-  // حساب إجمالي الديون المستحقة لجميع الموردين
   const tot = gs.reduce((s, g) => s + g.left, 0);
+  const lim = (UI.dAll || gs.length <= DLIM + 1) ? gs.length : DLIM;
 
-  // تحديد عدد الموردين المعروضين
-  const lim = (UI.dAll || gs.length <= DLIM + 1)
-    ? gs.length
-    : DLIM;
-
-  // إنشاء صف لكل مورد ضمن العدد المطلوب عرضه
   const rows = gs.slice(0, lim).map(g => `
     <div class="row-i" data-sup="#${esc(g.k)}">
       <span class="ic">🤝</span>
-
       <div class="mid">
         ${esc(g.k || 'بدون مورّد')}
-
         <span>
           ${g.n} ${g.n === 1 ? 'دين' : 'ديون'} ·
           منذ ${sd(g.first)}
         </span>
       </div>
-
-      <!-- إظهار إجمالي الدين المتبقي للمورد -->
       <b class="neg">${fmt(g.left)}</b>
-
       <span class="chev">‹</span>
     </div>
   `).join('');
 
-  // تجهيز زر عرض المزيد أو عرض عدد أقل من الموردين
   let btn = '';
 
   if (gs.length > lim) {
@@ -171,14 +138,12 @@ function debtsHTML() {
     btn = `<button class="btn alt" data-dall>عرض أقل</button>`;
   }
 
-  // إظهار عنوان القسم وإجمالي الديون وعدد الموردين وقائمة الديون
   return `
     <h3>
       🤝 ديون عليك ·
       <span class="neg">${fmt(tot)}</span> ·
       ${gs.length} ${gs.length === 1 ? 'مورّد' : 'موردين'}
     </h3>
-
     <div class="list">${rows}</div>
     ${btn}
   `;
@@ -187,42 +152,31 @@ function debtsHTML() {
 
 // شرح كيفية حساب الرصيد النقدي والقيمة الإجمالية للاستثمار
 function flowHTML() {
-  // استخراج مكونات حركة الأموال والقيم الحالية للاستثمار
   const f = E.flow();
   const bal = E.bal().invest;
   const inv = E.inventoryValue();
   const debt = E.debtTotal();
 
-  // دالة مساعدة لإنشاء صف يعرض اسم البند وقيمته ولونه
-  const L = (l, v, c) =>
+  const L = (label, value, cls) =>
     `<div class="stat">
-      <span>${l}</span>
-      <b class="${c || ''}">${v}</b>
+      <span>${label}</span>
+      <b class="${cls || ''}">${value}</b>
     </div>`;
 
-  // إرجاع قسم قابل للفتح والإغلاق يشرح مكونات رصيد الاستثمار
   return `<details class="det">
     <summary>كيف انحسب رصيد الاستثمار؟</summary>
 
-    <!-- الجزء الأول: حساب الرصيد النقدي -->
     <div class="list">
       ${L('رأس المال والتحويلات الداخلة', fmt(f.cap))}
-
-      <!-- إضافة المبيعات كاملة لأنها تمثل الأموال الناتجة عن البيع -->
       ${L('＋ المبيعات (كاملة: تكلفة + ربح)', fmt(f.sales), 'pos')}
-
-      <!-- خصم المشتريات التي دُفع ثمنها فعليًا -->
       ${L('－ مشتريات مدفوعة', fmt(f.paidPurch), 'neg')}
 
-      <!-- إظهار سداد الديون فقط إذا كان هناك مبلغ مسدد -->
       ${f.debtPay
         ? L('－ سداد ديون', fmt(f.debtPay), 'neg')
         : ''}
 
-      <!-- خصم مصاريف الاستثمار -->
       ${L('－ مصاريف', fmt(f.exp), 'neg')}
 
-      <!-- الرصيد النقدي الناتج عن حركة الأموال -->
       <div class="stat sum">
         <span>= الرصيد النقدي</span>
         <b>${fmt(bal)}</b>
@@ -231,26 +185,20 @@ function flowHTML() {
 
     <div class="gap"></div>
 
-    <!-- الجزء الثاني: حساب قيمة الاستثمار الكلية -->
     <div class="list">
       ${L('الرصيد النقدي', fmt(bal))}
-
-      <!-- إضافة قيمة البضاعة المتوفرة بسعر شرائها، لا بسعر بيعها -->
       ${L('＋ قيمة المخزون (بسعر التكلفة)', fmt(inv))}
 
-      <!-- خصم الديون المستحقة للموردين إذا كانت موجودة -->
       ${debt > 0.005
         ? L('－ ديون عليك', fmt(debt), 'neg')
         : ''}
 
-      <!-- القيمة الإجمالية للاستثمار بعد خصم الديون -->
       <div class="stat sum">
         <span>= قيمة الاستثمار الكلية</span>
         <b>${fmt(bal + inv - debt)}</b>
       </div>
     </div>
 
-    <!-- توضيح الفرق بين المال النقدي وقيمة الاستثمار الكلية -->
     <div class="nt">
       الرصيد النقدي هو المال الموجود فعلاً بالاستثمار.
       المبيعات بتدخله كاملة، والمخزون ما هو داخل فيه وإنما بيتحسب بالقيمة الكلية.
@@ -261,27 +209,22 @@ function flowHTML() {
 
 // تسجيل صفحة الاستثمار في نظام عرض الصفحات
 R.reg('invest', 'الاستثمار', () => {
-  // استخراج الأرصدة والفترة المختارة وملخص الاستثمار لهذه الفترة
-  const b = E.bal(), pre = perPrefix(), m = E.period(pre).invest;
+  const b = E.bal();
+  const pre = perPrefix();
+  const m = E.period(pre).invest;
 
-  // رأس المال الذي أدخلته كإيراد في الصفحة الرئيسية.
-  // يجمع إيرادات قسم البيت فقط، ولا يتغير بسبب عمليات الاستثمار.
-  const capital = DB.s.tx
-    .filter(t => t.type === 'income' && t.sector === 'home')
-    .reduce((total, t) => total + (+t.amount || 0), 0);
+  // رأس المال هو مجموع الإيرادات المسجلة في الصفحة الرئيسية.
+  // عمليات البيع والشراء لا تغيّر هذا الرقم.
+  const capital = getHomeCapital();
 
-  // عدد المنتجات المسجلة
   const n = DB.s.products.length;
 
-  // عدد المنتجات التي وصلت كميتها إلى الحد الأدنى أو أقل
   const lowN = DB.s.products.filter(
     p => E.stock(p.id) <= (p.min || 0)
   ).length;
 
-  // حساب ربح المبيعات قبل خصم المصاريف
   const gross = m.sales - m.cogs;
 
-  // إنشاء محتوى صفحة الاستثمار
   return `<section class="hero">
     <small>رصيد الاستثمار (نقد)</small>
     <h1>${fmt(b.invest)}</h1>
@@ -289,15 +232,19 @@ R.reg('invest', 'الاستثمار', () => {
 
   ${periodBar()}
 
+  <!-- صندوق رأس المال الأساسي -->
+  <section class="capital-card">
+    <div class="capital-icon" aria-hidden="true">₪</div>
+    <div class="capital-info">
+      <small>رأس المال المحطوط</small>
+      <strong>${fmt(capital)}</strong>
+      <span>مجموع الإيرادات المسجلة في الصفحة الرئيسية</span>
+    </div>
+    <div class="capital-badge">رأس المال الأساسي</div>
+  </section>
+
   <!-- بطاقات الملخص المالي للاستثمار -->
   <div class="grid">
-
-    <!-- صندوق رأس المال المحطوط من إيرادات الصفحة الرئيسية -->
-    <div class="card hl">
-      <small>رأس المال المحطوط</small>
-      <b>${fmt(capital)}</b>
-    </div>
-
     <div class="card">
       <small>قيمة المخزون</small>
       <b>${fmt(E.inventoryValue())}</b>
@@ -323,7 +270,6 @@ R.reg('invest', 'الاستثمار', () => {
       <b class="neg">${fmt(m.expenses)}</b>
     </div>
 
-    <!-- هامش الربح = صافي الربح مقسومًا على المبيعات -->
     <div class="card">
       <small>هامش الربح</small>
       <b>
@@ -333,13 +279,11 @@ R.reg('invest', 'الاستثمار', () => {
       </b>
     </div>
 
-    <!-- ربح المبيعات قبل خصم المصاريف التشغيلية -->
     <div class="card hl">
       <small>ربح المبيعات (قبل المصاريف)</small>
       <b class="${gross >= 0 ? 'pos' : 'neg'}">${fmt(gross)}</b>
     </div>
 
-    <!-- صافي الربح بعد خصم المصاريف -->
     <div class="card hl">
       <small>صافي الربح (بعد المصاريف)</small>
       <b class="${m.profit >= 0 ? 'pos' : 'neg'}">${fmt(m.profit)}</b>
@@ -350,7 +294,6 @@ R.reg('invest', 'الاستثمار', () => {
 
   ${debtsHTML()}
 
-  <!-- عنوان المنتجات وعددها، مع تنبيه عند انخفاض المخزون -->
   <h3>
     المنتجات · ${n}
     ${lowN
@@ -358,7 +301,6 @@ R.reg('invest', 'الاستثمار', () => {
       : ''}
   </h3>
 
-  <!-- إظهار مربع البحث إذا تجاوز عدد المنتجات الحد الافتراضي -->
   ${n > PLIM
     ? `<input
         class="search"
@@ -369,10 +311,9 @@ R.reg('invest', 'الاستثمار', () => {
       >`
     : ''}
 
-  <!-- قائمة المنتجات -->
   <div id="plist">${prodHTML()}</div>
 
-  <!-- قائمة عمليات الاستثمار -->
   <h3>العمليات</h3>
   ${opsBlock('invest')}`;
 });
+  

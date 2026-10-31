@@ -311,3 +311,104 @@ button[data-action]{touch-action:manipulation}
 #unit-price-field label {
   margin: 0;
 }
+.capital-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 14px 0 18px;
+  padding: 20px;
+  overflow: hidden;
+  direction: rtl;
+  border: 1px solid #ccebd9;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f0fbf5 0%, #ffffff 65%, #e7f8ee 100%);
+  box-shadow: 0 8px 24px rgba(22, 101, 52, 0.08);
+}
+
+.capital-card::after {
+  content: "";
+  position: absolute;
+  left: -28px;
+  bottom: -48px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: rgba(22, 101, 52, 0.06);
+}
+
+.capital-icon {
+  z-index: 1;
+  display: grid;
+  flex: 0 0 54px;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 17px;
+  background: #166534;
+  color: #fff;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+.capital-info {
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.capital-info small {
+  color: #527060;
+  font-size: 13px;
+}
+
+.capital-info strong {
+  color: #14532d;
+  font-size: 27px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.capital-info span {
+  color: #718078;
+  font-size: 11px;
+}
+
+.capital-badge {
+  z-index: 1;
+  align-self: flex-start;
+  padding: 7px 10px;
+  border: 1px solid #ccebd9;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #166534;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 520px) {
+  .capital-card {
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .capital-icon {
+    flex-basis: 46px;
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+  }
+
+  .capital-info strong {
+    font-size: 23px;
+  }
+
+  .capital-badge {
+    max-width: 95px;
+    text-align: center;
+    white-space: normal;
+  }
+}
