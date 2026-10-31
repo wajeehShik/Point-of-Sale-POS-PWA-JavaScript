@@ -114,24 +114,22 @@ export const sectorField = ({ ctx, editId }) =>
  * 2. ملاحظة اختيارية.
  */
 export const commonFields = () => `
-  <!-- سطر يعرض التاريخ الحالي وزر تغييره -->
-  <div class="daterow" id="dt">
-    <span>📅 التاريخ: اليوم</span>
-    <button type="button" class="link" data-action="entry-date">تغيير</button>
-  </div>
-
-  <!-- حقل التاريخ مخفي في البداية، ويظهر عند طلب تغيير التاريخ -->
-  <label id="datel" style="display:none">
-    التاريخ
-    <input type="date" name="date" value="${today()}">
+  <label class="date-field">
+    تاريخ العملية
+    <input
+      type="date"
+      name="date"
+      value="${today()}"
+      required
+    >
   </label>
 
-  <!-- حقل اختياري لإضافة ملاحظة للعملية -->
   <label>
     ملاحظة
     <input name="note" placeholder="اختياري">
   </label>
 `;
+
 
 /**
  * قراءة قيمة حقل من النموذج.

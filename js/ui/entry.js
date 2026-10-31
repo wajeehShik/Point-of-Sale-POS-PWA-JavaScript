@@ -294,9 +294,6 @@ export function openEdit(id) {
   // الإشارة إلى أن مبلغ العملية تمت تهيئته.
   f.dataset.amtT = '1';
 
-  // إخفاء عنصر اختيار التاريخ البديل وإظهار تسمية التاريخ.
-  $('#dt').style.display = 'none';
-  $('#datel').style.display = 'block';
 
   // إعادة مزامنة النموذج بعد تعبئة القيم.
   form().sync?.(f, env());
@@ -364,12 +361,6 @@ onClick('entry-type', d => {
   draw();
 });
 
-// عند الضغط على عنصر اختيار التاريخ:
-// نخفي العنصر dt ونظهر datel.
-onClick('entry-date', () => {
-  $('#dt').style.display = 'none';
-  $('#datel').style.display = 'block';
-});
 
 // عند الضغط على زر حذف العملية:
 // نطلب التأكيد، ثم نغلق النافذة ونعرض رسالة نجاح إذا تم الحذف.
