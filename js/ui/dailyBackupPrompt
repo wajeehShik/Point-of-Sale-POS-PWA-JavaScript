@@ -1,0 +1,316 @@
+import { store } from '../data/store.js';
+import { backupFile } from '../services/export.js';
+
+import {
+  hasBackupForDate,
+  localDate,
+  listBackups,
+  markPromptedToday,
+  restoreBackup,
+  saveDailyBackup,
+  wasPromptedToday
+} from '../services/dailyBackup.js';
+
+import { download, toast, esc } from './dom.js';
+import { refresh } from './router.js';
+
+const STYLE = `
+  .daily-backup-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgba(15, 23, 42, .58);
+    direction: rtl;
+  }
+
+  .daily-backup-dialog {
+    width: min(100%, 430px);
+    max-height: 90vh;
+    overflow: auto;
+    padding: 24px;
+    border-radius: 22px;
+    background: #fff;
+    color: #17211b;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, .25);
+    font-family: inherit;
+  }
+
+  .daily-backup-dialog h2 {
+    margin: 0 0 8px;
+    font-size: 21px;
+  }
+
+  .daily-backup-dialog p {
+    margin: 0 0 18px;
+    color: #64748b;
+    line-height: 1.7;
+    font-size: 14px;
+  }
+
+  .daily-backup-dialog label {
+    display: block;
+    margin: 12px 0 6px;
+    font-size: 13px;
+  }
+
+  .daily-backup-dialog select {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px;
+    border: 1px solid #dbe3df;
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+  }
+
+  .daily-backup-dialog button {
+    width: 100%;
+    min-height: 46px;
+    margin-top: 10px;
+    border: 0;
+    border-radius: 12px;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .daily-backup-dialog button:disabled {
+    opacity: .65;
+    cursor: wait;
+  }
+
+  .daily-backup-primary {
+    background: #166534;
+    color: #fff;
+  }
+
+  .daily-backup-secondary {
+    background: #f1f5f9;
+    color: #334155;
+  }
+
+  .daily-backup-danger {
+    background: #b91c1c;
+    color: #fff;
+  }
+
+  .daily-backup-small {
+    margin-top: 12px !important;
+    font-size: 12px !important;
+  }
+`;
+
+function addStyle() {
+  if (document.getElementById('daily-backup-style')) return;
+
+  const style = document.createElement('style');
+  style.id = 'daily-backup-style';
+  style.textContent = STYLE;
+  document.head.appendChild(style);
+}
+
+function makeDialog(content) {
+  addStyle();
+  document.getElementById('daily-backup-overlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'daily-backup-overlay';
+  overlay.className = 'daily-backup-overlay';
+  overlay.innerHTML = `
+    <section
+      class="daily-backup-dialog"
+      role="dialog"
+      aria-modal="true"
+    >
+      ${content}
+    </section>
+  `;
+
+  overlay.addEventListener('click', event => {
+    if (event.target === overlay) overlay.remove();
+  });
+
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+export async function showDailyBackupPrompt() {
+  const date = localDate();
+
+  if (wasPromptedToday(date)) return;
+
+  try {
+    if (await hasBackupForDate(date)) return;
+  } catch (error) {
+    toast(`تعذر فحص النسخ الاحتياطية: ${error.message || ''}`, true);
+    return;
+  }
+
+  const overlay = makeDialog(`
+    <h2>نسخة اليوم الاحتياطية</h2>
+
+    <p>
+      لم تُحفظ نسخة لهذا اليوم بعد. نزّل نسخة JSON إلى جهازك،
+      وسيحفظ التطبيق نسخة داخلية لاستعادتها لاحقًا.
+    </p>
+
+    <button
+      type="button"
+      class="daily-backup-primary"
+      data-daily-save
+    >
+      تنزيل نسخة اليوم وحفظها داخل التطبيق
+    </button>
+
+    <button
+      type="button"
+      class="daily-backup-secondary"
+      data-daily-later
+    >
+      لاحقًا اليوم
+    </button>
+
+    <p class="daily-backup-small">
+      ستظهر هذه النافذة مرة واحدة فقط في اليوم إذا لم توجد نسخة محفوظة.
+    </p>
+  `);
+
+  // إذا أغلق المستخدم النافذة بالنقر على الخلفية، لا نعيد إظهارها اليوم.
+  overlay.addEventListener('click', event => {
+    if (event.target === overlay) markPromptedToday(date);
+  });
+
+  overlay
+    .querySelector('[data-daily-later]')
+    .addEventListener('click', () => {
+      markPromptedToday(date);
+      overlay.remove();
+    });
+
+  overlay
+    .querySelector('[data-daily-save]')
+    .addEventListener('click', async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'جارٍ إنشاء النسخة...';
+
+      try {
+        // يبدأ تنزيل الملف مباشرة نتيجة ضغطة المستخدم.
+        const file = backupFile(store.state);
+        download(file.name, file.content, file.mime);
+
+        // حفظ نسخة داخلية في IndexedDB.
+        await saveDailyBackup(store.state, date);
+
+        markPromptedToday(date);
+        overlay.remove();
+        toast('تم تنزيل نسخة اليوم وحفظها داخل التطبيق ✓');
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'إعادة المحاولة';
+        toast(
+          `تعذر حفظ النسخة الداخلية: ${error.message || ''}`,
+          true
+        );
+      }
+    });
+}
+
+export async function showBackupRestoreDialog() {
+  let backups;
+
+  try {
+    backups = await listBackups();
+  } catch (error) {
+    toast(`تعذر قراءة النسخ: ${error.message || ''}`, true);
+    return;
+  }
+
+  if (!backups.length) {
+    toast('لا توجد نسخ داخلية بعد', true);
+    return;
+  }
+
+  const options = backups.map(backup => `
+    <option value="${esc(backup.id)}">
+      ${esc(backup.label || backup.date)}
+    </option>
+  `).join('');
+
+  const overlay = makeDialog(`
+    <h2>استعادة نسخة احتياطية</h2>
+
+    <p>
+      اختر النسخة حسب التاريخ. سيحفظ التطبيق نسخة أمان من بياناتك
+      الحالية قبل الاستعادة.
+    </p>
+
+    <label for="daily-backup-restore-select">
+      النسخة المحفوظة
+    </label>
+
+    <select id="daily-backup-restore-select">
+      ${options}
+    </select>
+
+    <button
+      type="button"
+      class="daily-backup-danger"
+      data-backup-restore
+    >
+      استعادة النسخة المحددة
+    </button>
+
+    <button
+      type="button"
+      class="daily-backup-secondary"
+      data-backup-cancel
+    >
+      إلغاء
+    </button>
+  `);
+
+  overlay
+    .querySelector('[data-backup-cancel]')
+    .addEventListener('click', () => overlay.remove());
+
+  overlay
+    .querySelector('[data-backup-restore]')
+    .addEventListener('click', async event => {
+      const id = overlay
+        .querySelector('#daily-backup-restore-select')
+        .value;
+
+      const backup = backups.find(item => item.id === id);
+      const accepted = confirm(
+        `سيتم استبدال البيانات الحالية بنسخة ${
+          backup?.label || backup?.date
+        }. متابعة؟`
+      );
+
+      if (!accepted) return;
+
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'جارٍ الاستعادة...';
+
+      try {
+        const result = await restoreBackup(id);
+
+        if (result?.error) {
+          throw new Error(result.error);
+        }
+
+        overlay.remove();
+        refresh();
+        toast('تمت استعادة النسخة بنجاح ✓');
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'إعادة المحاولة';
+        toast(error.message || 'تعذرت استعادة النسخة', true);
+      }
+    });
+}
