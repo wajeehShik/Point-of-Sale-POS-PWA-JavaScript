@@ -31,11 +31,11 @@ export const TX_TYPES = {
 
   // بيع: يزيد رصيد الحساب بالمبلغ المستلم من البيع
   sale: {
-    icon: '🛒',
-    label: 'بيع',
-    sign: +1,
-    effects: t => money(t, +1), // زيادة رصيد الحساب بقيمة البيع
-  },
+  icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.1 10.1a2 2 0 0 0 2 1.6h8.5a2 2 0 0 0 1.9-1.4L21 9H7"/><path d="M10 20h.01M18 20h.01"/></svg>',
+  label: 'بيع',
+  sign: +1,
+  effects: t => money(t, +1),
+},
 
   // مصروف: ينقص رصيد الحساب
   expense: {
@@ -46,14 +46,12 @@ export const TX_TYPES = {
   },
 
   // شراء: ينقص رصيد الحساب إذا تم الدفع مباشرة
-  purchase: {
-    icon: '📦',
-    label: 'شراء',
-    sign: -1,
-    // إذا كان الشراء بالدين، لا نخصم المبلغ الآن من الحساب
-    effects: t => (t.credit ? [] : money(t, -1)),
-  },
-
+purchase: {
+  icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4.5 7.7 7.5 4.2 7.5-4.2M12 12v8.5M8 5.2l8 4.5"/></svg>',
+  label: 'شراء',
+  sign: -1,
+  effects: t => (t.credit ? [] : money(t, -1)),
+},
   // سداد دين: ينقص رصيد الحساب بالمبلغ الذي تم دفعه
   debtpay: {
     icon: '🤝',

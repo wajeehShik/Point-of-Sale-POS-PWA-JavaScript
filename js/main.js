@@ -30,6 +30,8 @@ import {
   startRouter,
   refresh
 } from './ui/router.js';
+import sales from './ui/pages/sales.js';
+import expenses from './ui/pages/expenses.js';
 
 // نستورد دوال إدارة واجهة تسجيل الدخول.
 //
@@ -147,6 +149,8 @@ register('home', home);
 register('invest', invest);
 register('reports', reports);
 register('settings', settings);
+register('sales', sales);
+register('expenses', expenses);
 
 
 /*

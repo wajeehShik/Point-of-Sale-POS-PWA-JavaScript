@@ -19,10 +19,13 @@ export const ui = {
    * القيمة all تعني عرض جميع أنواع العمليات المتاحة
    * في الصفحة الحالية.
    */
-  tab: {
-    home: 'all',
-    invest: 'all'
-  },
+tab: {
+  home: 'all',
+  invest: 'all',
+  sales: 'sale',
+  expenses: 'expense'
+},
+
 
 
   /**
@@ -34,11 +37,14 @@ export const ui = {
    *
    * يمكن زيادة هذه القيم عند الضغط على زر "عرض المزيد".
    */
-  limit: {
-    home: 30,
-    invest: 30,
-    all: 10
-  },
+limit: {
+  home: 30,
+  invest: 30,
+  sales: 30,
+  expenses: 30,
+  all: 10
+},
+
 
 
   /**
@@ -47,11 +53,14 @@ export const ui = {
    * لكل صفحة بحث مستقل حتى لا يؤدي البحث في صفحة
    * الاستثمار إلى تغيير البحث في صفحة البيت.
    */
-  query: {
-    home: '',
-    invest: '',
-    all: ''
-  },
+ query: {
+  home: '',
+  invest: '',
+  sales: '',
+  expenses: '',
+  all: ''
+},
+
 
 
   /**
@@ -93,4 +102,6 @@ export const ui = {
 export const resetLimits = () => {
   ui.limit.home = 30;
   ui.limit.invest = 30;
+  ui.limit.sales = 30;
+  ui.limit.expenses = 30;
 };

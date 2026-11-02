@@ -59,7 +59,19 @@ const TABS = {
     ['purchase', 'شراء', ['purchase']],
     ['expense', 'مصاريف', ['expense']],
     ['other', 'أخرى', ['income', 'transfer', 'debtpay']]
-  ]
+  ],
+  sales: [
+  ['sale', 'المبيعات', ['sale']]
+],
+
+expenses: [
+  ['expense', 'المصاريف', ['expense']]
+]
+
+};
+const DATA_PAGE = {
+  sales: 'invest',
+  expenses: 'invest'
 };
 
 
@@ -117,8 +129,10 @@ function pageList(state, page) {
   // 3. إذا لم يوجد بحث، يجب أن تقع العملية ضمن الفترة المحددة.
   //
   // عند وجود نص بحث، لا نقيّد النتائج بالفترة الزمنية هنا.
-  let list = state.tx.filter(t =>
-    (t.sector === page || t.toSector === page) &&
+ const dataPage = DATA_PAGE[page] || page;
+
+let list = state.tx.filter(t =>
+  (t.sector === dataPage || t.toSector === dataPage) &&
     (!types || types.includes(t.type)) &&
     (q || inPeriod(t.date, period))
   );

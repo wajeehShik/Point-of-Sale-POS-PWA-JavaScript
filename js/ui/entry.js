@@ -230,11 +230,13 @@ function openSheet(title) {
  *
  * ctx يحدد سياق العملية، مثل home أو invest.
  */
-export function openNew(ctx) {
+export function openNew(ctx, initialType = null) {
+
   st = {
     // اختيار أول نوع متاح في السياق.
     // إذا لم يكن السياق معروفاً، نستخدم جميع الأنواع.
-    type: (CTX_TYPES[ctx] || ALL_TYPES)[0],
+    type: initialType || (CTX_TYPES[ctx] || ALL_TYPES)[0],
+
 
     ctx,
 
@@ -345,8 +347,27 @@ function submit() {
 // عند الضغط على زر الإضافة العائم:
 // نأخذ السياق من الصفحة الحالية ونفتح نموذج الإضافة.
 onClick('fab', () => {
-  openNew(currentPage().ctx ?? null);
+  const route =
+    location.hash.replace('#/', '');
+
+  const page = currentPage();
+
+  let initialType = null;
+
+  if (route === 'sales') {
+    initialType = 'sale';
+  }
+
+  if (route === 'expenses') {
+    initialType = 'expense';
+  }
+
+  openNew(
+    page.ctx ?? null,
+    initialType
+  );
 });
+
 
 // عند الضغط على زر تعديل عملية:
 // نأخذ معرّف العملية من data-id.

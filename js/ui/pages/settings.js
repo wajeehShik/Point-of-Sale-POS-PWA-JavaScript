@@ -52,6 +52,7 @@ import { installGo } from '../install.js';
  * تحديث الصفحة بعد تغيير بعض الإعدادات.
  */
 import { refresh } from '../router.js';
+import { prefs } from '../../data/prefs.js';
 
 /**
  * ربط أحداث النقر والتغيير بعناصر الواجهة.
@@ -149,6 +150,26 @@ export default {
     );
 
     return `
+<h3>🏡 أقسام النظام</h3>
+
+<div class="card">
+  <label>
+    إظهار قسم البيت
+
+    ${select(
+      [
+        ['1', 'مفعّل — محل وبيت'],
+        ['0', 'مخفي — محل فقط']
+      ],
+      prefs.get('mali_home_enabled', '1'),
+      'set-home-enabled'
+    )}
+  </label>
+
+  <div style="font-size:12px;color:var(--t2)">
+    إخفاء البيت لا يحذف بياناته، ويمكن إظهاره لاحقًا.
+  </div>
+</div>
 
       <!-- تحذير إذا كانت بيانات الدخول ما زالت افتراضية -->
       ${
@@ -347,6 +368,20 @@ onChange('set-cycle', (d, el) => {
   setPeriod(day === 1 ? '' : 'c0');
 
   toast('تم حفظ بداية الشهر المالي ✓');
+});
+onChange('set-home-enabled', (d, el) => {
+  prefs.set(
+    'mali_home_enabled',
+    el.value
+  );
+
+  refresh();
+
+  toast(
+    el.value === '1'
+      ? 'تم تفعيل قسم البيت ✓'
+      : 'تم إخفاء قسم البيت دون حذف بياناته ✓'
+  );
 });
 
 /**

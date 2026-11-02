@@ -204,19 +204,29 @@ function row(s, t, scoped) {
  * day: تاريخ العمليات.
  * v: صافي اليوم الذي تم حسابه باستخدام signed().
  */
-const dayHeader = (day, v) => `
-  <div class="dh">
+const dayHeader = (day, sales, profit, showSalesLabel = false) => `
+  <div class="dh${showSalesLabel ? ' dh-sales' : ''}">
+    <span class="dh-date">${dayLabel(day)}</span>
 
-    <!-- عرض التاريخ -->
-    <span>${dayLabel(day)}</span>
-
-    <!-- عرض صافي اليوم بإشارة ولون مناسبين -->
-    <b class="${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}">
-      ${v ? (v > 0 ? '+' : '-') + fmt(Math.abs(v)) : ''}
-    </b>
-
+    ${
+      showSalesLabel
+        ? `
+          <span class="dh-day-stats">
+            <span class="dh-day-sales">
+              مبيعات <b>${fmt(sales)}</b>
+            </span>
+            <span class="dh-day-profit">
+              ربح <b>${fmt(profit)}</b>
+            </span>
+          </span>
+        `
+        : `<b class="${sales > 0 ? 'pos' : sales < 0 ? 'neg' : ''}">
+            ${sales ? (sales > 0 ? '+' : '-') + fmt(Math.abs(sales)) : ''}
+          </b>`
+    }
   </div>
 `;
+
 
 
 /**
@@ -264,11 +274,23 @@ export function txList(state, list, limit, page = '') {
    * ملاحظة: هذا الحساب يشمل كل عناصر rows،
    * حتى العمليات التي لن تظهر بسبب limit.
    */
-  const net = {};
+const net = {};
+const dailySales = {};
+const dailyProfit = {};
 
-  rows.forEach(t => {
-    net[t.date] = (net[t.date] || 0) + signed(t);
-  });
+rows.forEach(t => {
+  net[t.date] = (net[t.date] || 0) + signed(t);
+
+  if (t.type === 'sale') {
+    dailySales[t.date] =
+      (dailySales[t.date] || 0) + (Number(t.amount) || 0);
+
+    dailyProfit[t.date] =
+      (dailyProfit[t.date] || 0)
+      + ((Number(t.amount) || 0) - (Number(t.cogs) || 0));
+  }
+});
+
 
 
   // بدء إنشاء القائمة.
@@ -282,10 +304,20 @@ export function txList(state, list, limit, page = '') {
   for (const t of rows.slice(0, limit)) {
 
     // إذا انتقلنا إلى يوم مختلف، نعرض عنوان اليوم وصافيه.
-    if (t.date !== day) {
-      day = t.date;
-      html += dayHeader(day, net[day] || 0);
-    }
+ if (t.date !== day) {
+  day = t.date;
+
+  const isSalesPage = page === 'sales';
+
+ 
+html += dayHeader(
+  day,
+  isSalesPage ? (dailySales[day] || 0) : (net[day] || 0),
+  dailyProfit[day] || 0,
+  isSalesPage
+);
+}
+
 
     // إضافة صف العملية الحالية.
     html += row(state, t, scoped);

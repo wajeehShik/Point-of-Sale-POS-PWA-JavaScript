@@ -4,6 +4,7 @@
  * مثال: $('#view') تعني اختيار العنصر الذي يحمل id="view".
  */
 import { $ } from './dom.js';
+import { prefs } from '../data/prefs.js';
 
 // استيراد مخزن بيانات التطبيق، الذي يحتوي على الحالة الحالية
 // ويوفر الاشتراك بالتغييرات التي تحدث على البيانات.
@@ -60,7 +61,15 @@ export const currentName = () => {
 
   // إذا كانت الصفحة مسجلة، نستخدم اسمها.
   // وإلا نرجع إلى الصفحة الرئيسية للوحة التحكم.
-  return pages.has(n) ? n : 'dashboard';
+const homeEnabled =
+  prefs.get('mali_home_enabled', '1') !== '0';
+
+if (n === 'home' && !homeEnabled) {
+  return 'dashboard';
+}
+
+return pages.has(n) ? n : 'dashboard';
+
 };
 
 
@@ -96,6 +105,10 @@ export function refresh() {
   // وضع اسم الصفحة في data-page داخل body.
   // يمكن استخدامه في CSS لتخصيص تصميم كل صفحة.
   document.body.dataset.page = name;
+document.body.dataset.homeEnabled =
+  prefs.get('mali_home_enabled', '1') !== '0'
+    ? '1'
+    : '0';
 
   // تحديث عنوان الصفحة الظاهر في الواجهة.
   $('#title').textContent = page.title;

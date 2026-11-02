@@ -191,53 +191,36 @@
     لكن التأكيد يأتي من js/ui/actions.js والملفات المرتبطة به.
   -->
 
-  <nav id="nav">
-    <!--
-      قائمة التنقل الرئيسية بين صفحات التطبيق.
-      كل رابط يغيّر الجزء الموجود بعد # في عنوان الصفحة،
-      وهو أسلوب شائع لبناء التنقل باستخدام Hash Router.
-    -->
+<nav id="nav">
+  <a href="#/dashboard" data-p="dashboard">
+    <i>🏠</i>الرئيسية
+  </a>
 
-    <a href="#/dashboard" data-p="dashboard">
-      <i>🏠</i>الرئيسية
-    </a>
-    <!--
-      الرابط الأول يطلب الانتقال إلى لوحة التحكم.
-      data-p="dashboard" يحدد اسم الصفحة بطريقة يسهل
-      على JavaScript قراءتها لتحديث الصفحة النشطة.
-    -->
+  <a href="#/home" data-p="home">
+    <i>🏡</i>البيت
+  </a>
 
-    <a href="#/home" data-p="home">
-      <i>🏡</i>البيت
-    </a>
-    <!--
-      رابط قسم البيت، ويُفترض أن يعرض العمليات المنزلية
-      أو البيانات المرتبطة بها.
-    -->
+  <a href="#/invest" data-p="invest">
+    <i>📦</i>الاستثمار
+  </a>
 
-    <a href="#/invest" data-p="invest">
-      <i>📦</i>الاستثمار
-    </a>
-    <!--
-      رابط قسم الاستثمار.
-      المحتوى الحقيقي لهذا القسم تحدده ملفات JavaScript.
-    -->
+  <a href="#/sales" data-p="sales">
+    <i>🛒</i>المبيعات
+  </a>
 
-    <a href="#/reports" data-p="reports">
-      <i>📊</i>التقارير
-    </a>
-    <!--
-      رابط صفحة التقارير، التي قد تعرض ملخصات ومؤشرات مالية.
-    -->
+  <a href="#/expenses" data-p="expenses">
+    <i>💸</i>المصاريف
+  </a>
 
-    <a href="#/settings" data-p="settings">
-      <i>⚙️</i>الإعدادات
-    </a>
-    <!--
-      رابط صفحة الإعدادات.
-    -->
+  <a href="#/reports" data-p="reports">
+    <i>📊</i>التقارير
+  </a>
 
-  </nav>
+  <a href="#/settings" data-p="settings">
+    <i>⚙️</i>الإعدادات
+  </a>
+</nav>
+
 
   <div id="sheet">
     <!--
