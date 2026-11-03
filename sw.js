@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mali-offline-v23';
+const CACHE_NAME = 'mali-offline-v24';
 
 const APP_FILES = [
   './',

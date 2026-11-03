@@ -1,35 +1,14 @@
-
-/**
- * periodSummary: حساب ملخص الدخل والمصروفات والأرباح لفترة.
- * inPeriod: التحقق من أن تاريخ العملية يقع داخل الفترة المحددة.
- */
 import {
   periodSummary,
   inPeriod
 } from '../../domain/ledger.js';
 
-/**
- * حساب القيمة الحالية للمخزون.
- */
 import { inventoryValue } from '../../domain/inventory.js';
 
-/**
- * productName: الحصول على اسم المنتج من معرّفه.
- * accountName: الحصول على اسم الحساب من معرّفه.
- */
 import {
-  productName,
-  accountName
+  productName
 } from '../../domain/lookup.js';
 
-/**
- * دوال تحليل البيانات:
- * expenseByCategory: تجميع المصروفات حسب الصنف.
- * productPerformance: تحليل أرباح المنتجات.
- * itemPrices: تحليل أسعار الأصناف وتغيرها.
- * monthlySeries: تجهيز بيانات الأشهر للرسم البياني.
- * daysIn: حساب عدد الأيام في الفترة.
- */
 import {
   expenseByCategory,
   productPerformance,
@@ -38,515 +17,708 @@ import {
   daysIn
 } from '../../domain/analytics.js';
 
-/**
- * الحصول على الأشهر التي تحتوي على عمليات مسجلة.
- */
 import { monthsOf } from '../../domain/period.js';
-
-/**
- * تحويل قيمة الشهر إلى اسم مفهوم للمستخدم.
- */
 import { monthName } from '../../core/dates.js';
-
-/**
- * تنسيق المبالغ المالية وحساب النسب المئوية.
- */
-import {
-  fmt,
-  pct
-} from '../../core/format.js';
-
-/**
- * الوصول إلى حالة التطبيق الحالية، ومنها العمليات.
- */
+import { fmt, pct } from '../../core/format.js';
 import { store } from '../../data/store.js';
-
-/**
- * إنشاء ملف CSV يحتوي على العمليات.
- */
 import { csvFile } from '../../services/export.js';
-
-/**
- * esc: حماية النصوص عند إدخالها داخل HTML.
- * download: تنزيل ملف على جهاز المستخدم.
- */
-import {
-  esc,
-  download
-} from '../dom.js';
-
-/**
- * مكونات واجهة جاهزة:
- * card: بطاقة إحصائية.
- * grid: شبكة بطاقات.
- * stat: صف إحصائي.
- * listBox: صندوق قائمة.
- * emptyBox: واجهة تظهر عند عدم وجود بيانات.
- */
-import {
-  card,
-  grid,
-  stat,
-  listBox,
-  emptyBox
-} from '../components.js';
-
-/**
- * أدوات اختيار الفترة وعرض اسمها.
- */
-import {
-  periodBar,
-  currentPeriod,
-  periodText
-} from '../periodBar.js';
-
-/**
- * إنشاء الرسم البياني لمقارنة الأشهر.
- */
+import { esc, download } from '../dom.js';
+import { periodBar, currentPeriod, periodText } from '../periodBar.js';
 import { monthsChart } from '../views/monthsChart.js';
-
-/**
- * ربط حدث النقر بزر أو عنصر يحمل الإجراء المحدد.
- */
 import { onClick } from '../actions.js';
 
-/**
- * تحديد فئة CSS المناسبة للرقم:
- * pos للأرباح الموجبة أو الصفر.
- * neg للقيم السالبة.
- */
 const tone = n => (n >= 0 ? 'pos' : 'neg');
 
-/**
- * إنشاء قائمة أشرطة لعرض القيم ومقارنتها بصريًا.
- *
- * rows: مصفوفة من البيانات بالشكل:
- * [[اسم الصنف، القيمة]، ...]
- *
- * color: لون الأشرطة.
- */
-function barList(rows, color) {
+const sign = n =>
+  `${n >= 0 ? '+' : ''}${fmt(n)}`;
 
-  // إذا لم توجد بيانات، نعرض رسالة بدل الرسم.
+function iconForCategory(name, index = 0) {
+  const icons = ['🧾', '🛒', '🚗', '🏠', '🔥', '📦', '💳', '🔧'];
+  return icons[index % icons.length];
+}
+
+function categoryRows(rows, color = 'var(--p)') {
   if (!rows.length) {
-    return emptyBox('لا بيانات في هذه الفترة');
+    return '<div class="empty">لا توجد مصاريف مسجلة في هذه الفترة</div>';
   }
 
-  // جمع القيم لحساب النسبة التي يمثلها كل صنف.
   const total = rows.reduce(
-    (s, r) => s + r[1],
+    (sum, [, value]) => sum + value,
     0
   );
 
-  // إيجاد أكبر قيمة لاستخدامها في تحديد أطوال الأشرطة.
-  // نستخدم 1 كحد أدنى لتجنب القسمة على صفر هنا.
   const max = Math.max(
     1,
-    ...rows.map(r => r[1])
+    ...rows.map(([, value]) => value)
   );
 
-  return '<div class="card">'
-    + rows.map(([label, value]) => `
-      <div class="bar-r">
+  return rows
+    .slice(0, 7)
+    .map(([label, value], index) => {
+      const share =
+        total > 0
+          ? Math.round((value / total) * 100)
+          : 0;
 
-        <!-- اسم الصنف وقيمته ونسبته من مجموع القيم -->
-        <div class="bl">
-          <span>${esc(label)}</span>
+      const width = Math.round((value / max) * 100);
 
-          <b>
-            ${fmt(value)}
-            <em>${Math.round((value / total) * 100)}%</em>
-          </b>
+      return `
+        <div class="report-category">
+          <div class="report-category-head">
+            <span class="report-category-name">
+              <i>${iconForCategory(label, index)}</i>
+              ${esc(label)}
+            </span>
+
+            <strong>
+              ${fmt(value)}
+              <em>${share}%</em>
+            </strong>
+          </div>
+
+          <div class="report-progress">
+            <i
+              style="width:${width}%;background:${color}"
+            ></i>
+          </div>
         </div>
-
-        <!-- الشريط المرئي الذي يمثل حجم القيمة -->
-        <div class="bt">
-          <i style="
-            width:${(value / max) * 100}%;
-            background:${color}
-          "></i>
-        </div>
-
-      </div>
-    `).join('')
-    + '</div>';
+      `;
+    })
+    .join('');
 }
 
-/**
- * إنشاء صفوف توضح أداء المنتجات في الفترة المختارة.
- *
- * state: بيانات التطبيق اللازمة للحصول على أسماء المنتجات.
- * txs: العمليات التي تقع داخل الفترة المختارة.
- */
 function productRows(state, txs) {
+  const rows = productPerformance(txs);
 
-  // تحليل المبيعات حسب المنتج، ثم تحويل النتائج إلى HTML.
-  const rows = productPerformance(txs)
-    .map(o => `
-      <div class="row-i">
+  if (!rows.length) {
+    return `
+      <div class="empty">
+        لا توجد مبيعات مسجلة في هذه الفترة
+      </div>
+    `;
+  }
 
-        <!-- أيقونة المنتج -->
-        <span class="ic">🏷️</span>
+  return rows
+    .slice(0, 6)
+    .map((item, index) => `
+      <div class="report-product">
+        <span class="report-rank">
+          ${index + 1}
+        </span>
 
-        <div class="mid">
+        <span class="report-product-icon">
+          🏷️
+        </span>
 
-          <!-- اسم المنتج -->
-          ${esc(productName(state, o.id))}
+        <div class="report-product-main">
+          <strong>
+            ${esc(productName(state, item.id))}
+          </strong>
 
-          <!-- الكمية المباعة وهامش الربح -->
           <span>
-            بيع ${o.qty} · هامش ${o.margin}%
+            ${item.qty} وحدة · هامش ربح ${item.margin}%
           </span>
-
         </div>
 
-        <!-- الربح مع علامة + إذا كان موجبًا -->
-        <b class="${tone(o.profit)}">
-          ${o.profit >= 0 ? '+' : ''}${fmt(o.profit)}
+        <b class="${tone(item.profit)}">
+          ${sign(item.profit)}
         </b>
-
       </div>
     `)
     .join('');
-
-  // إذا لم تنتج عملية التحليل أي صفوف، نعرض رسالة.
-  return rows || '<div class="empty">لا مبيعات في هذه الفترة</div>';
 }
 
-/**
- * إنشاء قائمة لتحليل أسعار الأصناف التي ظهرت في العمليات.
- *
- * txs: العمليات خلال الفترة المحددة.
- */
 function priceRows(txs) {
+  const rows = itemPrices(txs);
 
-  // تحليل الأسعار، ثم عرض عدد مرات الشراء والمتوسط وآخر سعر.
-  return itemPrices(txs)
-    .map(p => `
-      <div class="row-i">
+  if (!rows.length) {
+    return `
+      <div class="empty">
+        لا توجد بيانات أسعار قابلة للمقارنة
+      </div>
+    `;
+  }
 
-        <div class="mid">
-
-          <!-- اسم الصنف -->
-          ${esc(p.name)}
+  return rows
+    .slice(0, 6)
+    .map(item => `
+      <div class="report-price-row">
+        <div>
+          <strong>
+            ${esc(item.name)}
+          </strong>
 
           <span>
-            ${p.count} مرات
-
-            <!-- متوسط السعر -->
-            · متوسط ${fmt(p.avg)}
-
-            <!-- إظهار الوحدة إن كانت متوفرة -->
-            ${p.unit ? ' / ' + esc(p.unit) : ''}
-
-            <!-- آخر سعر مسجل -->
-            · آخر ${fmt(p.last)}
+            ${item.count} عمليات · المتوسط ${fmt(item.avg)}
+            ${item.unit ? ` / ${esc(item.unit)}` : ''}
           </span>
-
         </div>
 
-        <!--
-          إذا ارتفع السعر نعرض سهمًا للأعلى وفئة neg.
-          إذا انخفض نعرض سهمًا للأسفل وفئة pos.
-          إذا لم يتغير، نعرض شرطة.
-        -->
         <b class="${
-          p.change > 0
+          item.change > 0
             ? 'neg'
-            : p.change < 0
+            : item.change < 0
               ? 'pos'
               : ''
         }">
           ${
-            p.change
-              ? (p.change > 0 ? '▲ ' : '▼ ')
-                + Math.abs(Math.round(p.change))
-                + '%'
-              : '—'
+            item.change
+              ? `${item.change > 0 ? '▲' : '▼'} ${
+                  Math.abs(Math.round(item.change))
+                }%`
+              : 'ثابت'
           }
         </b>
-
       </div>
     `)
     .join('');
 }
 
-/**
- * إنشاء صف لكل شهر للمقارنة بين النتائج الشهرية.
- *
- * state: بيانات التطبيق التي تُستخدم لحساب ملخص كل شهر.
- */
 function monthRows(state) {
+  const rows = monthsOf(state);
 
-  // المرور على الأشهر التي تحتوي على بيانات.
-  return monthsOf(state)
-    .map(m => {
+  if (!rows.length) {
+    return `
+      <tr>
+        <td colspan="4" class="empty">
+          لا توجد أشهر للمقارنة
+        </td>
+      </tr>
+    `;
+  }
 
-      // حساب ملخص الشهر الحالي.
-      const x = periodSummary(state, m);
+  return rows
+    .map(month => {
+      const summary = periodSummary(state, month);
 
       return `
-        <!-- عند النقر على الصف، يُطلب عرض هذا الشهر -->
-        <tr data-action="period-pick" data-per="${m}">
+        <tr
+          data-action="period-pick"
+          data-per="${month}"
+        >
+          <td>
+            <strong>${monthName(month)}</strong>
+            <small>${month}</small>
+          </td>
 
-          <!-- اسم الشهر -->
-          <td>${monthName(m)}</td>
-
-          <!-- دخل البيت -->
           <td class="pos">
-            ${fmt(x.home.income)}
+            ${fmt(summary.home.income)}
           </td>
 
-          <!-- مصروف البيت -->
           <td class="neg">
-            ${fmt(x.home.expense)}
+            ${fmt(summary.home.expense)}
           </td>
 
-          <!-- ربح الاستثمار، مع تحديد لونه حسب القيمة -->
-          <td class="${tone(x.invest.profit)}">
-            ${fmt(x.invest.profit)}
+          <td class="${tone(summary.invest.profit)}">
+            ${fmt(summary.invest.profit)}
           </td>
-
         </tr>
       `;
     })
     .join('');
 }
 
+function kpi(
+  label,
+  value,
+  helper,
+  icon,
+  cls = ''
+) {
+  return `
+    <article class="report-kpi ${cls}">
+      <span class="report-kpi-icon">
+        ${icon}
+      </span>
+
+      <div>
+        <span>${label}</span>
+        <strong>${value}</strong>
+        <small>${helper}</small>
+      </div>
+    </article>
+  `;
+}
+
 export default {
-  // عنوان الصفحة.
   title: 'التقارير',
 
-  // التقارير تشمل البيت والاستثمار، فلا ترتبط بقسم واحد.
   ctx: null,
 
-  /**
-   * بناء صفحة التقارير.
-   */
   render(state) {
-
-    // إذا لم توجد أي عمليات، لا داعي لعرض تقارير فارغة.
     if (!state.tx.length) {
-      return periodBar(state)
-        + `
-          <div class="list" style="margin-top:14px">
-            <div class="empty">
-              ما في بيانات للتقارير بعد.
-              أضف أول عملية من الرئيسية.
-            </div>
+      return `
+        <div class="reports-empty">
+          ${periodBar(state)}
+
+          <div class="report-empty-card">
+            <span>📊</span>
+
+            <h2>
+              التقرير سيظهر هنا
+            </h2>
+
+            <p>
+              أضف أول عملية مالية حتى نعرض لك
+              الملخص، المصاريف، المبيعات، والأرباح
+              في مكان واحد.
+            </p>
+
+            <a href="#/dashboard">
+              العودة إلى الرئيسية
+            </a>
           </div>
-        `;
+        </div>
+      `;
     }
 
-    // الحصول على الفترة المحددة واسمها المعروض.
     const period = currentPeriod();
     const label = periodText();
 
-    // تصفية العمليات بحيث تشمل الفترة المحددة فقط.
-    const txs = state.tx.filter(
-      t => inPeriod(t.date, period)
+    const txs = state.tx.filter(t =>
+      inPeriod(t.date, period)
     );
 
-    // حساب ملخص الدخل والمصروفات والأرباح للفترة.
-    const s = periodSummary(state, period);
+    const summary = periodSummary(
+      state,
+      period
+    );
 
-    // استخراج بيانات البيت.
-    const h = s.home;
+    const home = summary.home;
+    const invest = summary.invest;
 
-    // استخراج بيانات الاستثمار.
-    const i = s.invest;
+    const homeLeft =
+      home.income - home.expense;
 
-    // حساب المتبقي من دخل البيت بعد خصم مصروفاته.
-    const left = h.income - h.expense;
+    const net =
+      homeLeft + invest.profit;
 
-    // صافي الفترة حسب منطق التطبيق:
-    // المتبقي من البيت + ربح الاستثمار.
-    const net = left + i.profit;
+    const savingRate =
+      home.income > 0
+        ? Math.round(
+            (homeLeft / home.income) * 100
+          )
+        : 0;
 
-    // تجهيز قائمة تحليل الأسعار.
+    const dailyExpense =
+      home.expense /
+      daysIn(state, period);
+
+    const salesCount = txs.filter(
+      t => t.type === 'sale'
+    ).length;
+
+    const expenseCount = txs.filter(
+      t => t.type === 'expense'
+    ).length;
+
+    const topExpense =
+      expenseByCategory(txs, 'home')[0];
+
     const prices = priceRows(txs);
 
     return `
-      <!-- شريط اختيار الفترة -->
-      ${periodBar(state)}
+      <div class="reports-shell">
 
-      <!-- ملخص صافي الفترة المالية -->
-      <section class="hero">
-
-        <small>صافي الفترة · ${label}</small>
-
-        <!-- إضافة علامة + إذا كان الصافي موجبًا -->
-        <h1>
-          ${net > 0 ? '+' : ''}${fmt(net)}
-        </h1>
-
-        <div class="split">
-
-          <!-- المتبقي من دخل البيت -->
+        <div class="report-toolbar">
           <div>
-            🏡 المتبقي من البيت
-            <b>${fmt(left)}</b>
+            <span class="eyebrow">
+              <i></i>
+              مركز مالي موحّد
+            </span>
+
+            <h1>
+              التقارير والتحليلات
+            </h1>
+
+            <p>
+              قراءة سريعة وواضحة لأداء أموالك خلال
+              <b>${esc(label)}</b>
+            </p>
           </div>
 
-          <!-- ربح الاستثمار -->
-          <div>
-            📦 ربح الاستثمار
-            <b>${fmt(i.profit)}</b>
-          </div>
-
+          <button
+            class="report-export"
+            data-action="export-csv"
+            aria-label="تصدير التقرير"
+          >
+            <span>↥</span>
+            <b>تصدير</b>
+          </button>
         </div>
-      </section>
 
-      <!-- مؤشرات مالية إضافية -->
-      ${grid(
+        ${periodBar(state)}
 
-        // نسبة الادخار: المتبقي مقارنة بدخل البيت.
-        card(
-          'نسبة الادخار',
-          pct(left, h.income)
-        )
+        <nav
+          class="report-tabs"
+          aria-label="أقسام التقرير"
+        >
+          <a href="#report-overview">
+            نظرة عامة
+          </a>
 
-        // متوسط مصروف البيت لكل يوم في الفترة.
-        + card(
-          'متوسط مصروف البيت يومياً',
-          fmt(h.expense / daysIn(state, period))
-        )
+          <a href="#report-home">
+            البيت
+          </a>
 
-        // هامش ربح الاستثمار وفق دالة pct.
-        + card(
-          'هامش ربح الاستثمار',
-          pct(i.profit, i.sales)
-        )
+          <a href="#report-invest">
+            الاستثمار
+          </a>
 
-        // القيمة الحالية للمخزون.
-        + card(
-          'قيمة المخزون',
-          fmt(inventoryValue(state))
-        )
-      )}
+          <a href="#report-products">
+            المنتجات
+          </a>
+        </nav>
 
-      <!-- رسم بياني لبيانات آخر ستة أشهر -->
-      <h3>آخر 6 أشهر</h3>
-      ${monthsChart(monthlySeries(state, 6))}
+        <section
+          id="report-overview"
+          class="report-hero"
+        >
+          <div class="report-hero-glow"></div>
 
-      <!-- تقرير البيت للفترة المختارة -->
-      <h3>🏡 البيت · ${label}</h3>
+          <div class="report-hero-top">
+            <div>
+              <span>
+                صافي الأداء خلال الفترة
+              </span>
 
-      ${listBox(
-        // عرض دخل البيت ومصروفاته والمتبقي.
-        stat('الدخل', fmt(h.income), 'pos')
-        + stat('المصاريف', fmt(h.expense), 'neg')
-        + stat(
-          'المتبقي',
-          fmt(left),
-          tone(left),
-          true
-        )
-      )}
+              <h2 class="${tone(net)}">
+                ${sign(net)}
+              </h2>
 
-      <!-- تحليل توزيع مصروفات البيت حسب الصنف -->
-      <h3>أين صُرف مال البيت</h3>
-      ${barList(
-        expenseByCategory(txs, 'home'),
-        '#DC2626'
-      )}
+              <p>
+                المتبقي من البيت + صافي ربح الاستثمار
+              </p>
+            </div>
 
-      <!-- تقرير الاستثمار للفترة المختارة -->
-      <h3>📦 الاستثمار · ${label}</h3>
+            <span class="report-score">
+              ${
+                savingRate >= 20
+                  ? 'أداء جيد'
+                  : 'يحتاج متابعة'
+              }
 
-      ${listBox(
-        // إجمالي المبيعات.
-        stat('المبيعات', fmt(i.sales))
+              <i>●</i>
+            </span>
+          </div>
 
-        // تكلفة البضاعة المباعة.
-        + stat('تكلفة البضاعة', fmt(i.cogs))
+          <div class="report-hero-split">
+            <div>
+              <span>المتبقي من البيت</span>
+              <strong>${fmt(homeLeft)}</strong>
+            </div>
 
-        // مصروفات الاستثمار.
-        + stat('مصاريف الاستثمار', fmt(i.expenses), 'neg')
+            <div>
+              <span>ربح الاستثمار</span>
+              <strong class="${tone(invest.profit)}">
+                ${fmt(invest.profit)}
+              </strong>
+            </div>
 
-        // صافي ربح الاستثمار.
-        + stat(
-          'صافي الربح',
-          fmt(i.profit),
-          tone(i.profit),
-          true
-        )
-      )}
+            <div>
+              <span>قيمة المخزون</span>
+              <strong>
+                ${fmt(inventoryValue(state))}
+              </strong>
+            </div>
+          </div>
+        </section>
 
-      <!-- تحليل مصروفات الاستثمار حسب الصنف -->
-      <h3>مصاريف الاستثمار حسب الصنف</h3>
-      ${barList(
-        expenseByCategory(txs, 'invest'),
-        '#F59E0B'
-      )}
+        <section class="report-kpis">
+          ${kpi(
+            'نسبة الادخار',
+            `${savingRate}%`,
+            'من دخل البيت',
+            '◒',
+            savingRate >= 0
+              ? 'kpi-green'
+              : 'kpi-red'
+          )}
 
-      <!-- عرض أداء كل منتج وأرباحه -->
-      <h3>ربح كل منتج</h3>
-      ${listBox(productRows(state, txs))}
+          ${kpi(
+            'متوسط الصرف',
+            fmt(dailyExpense),
+            'لكل يوم',
+            '↘',
+            'kpi-red'
+          )}
 
-      <!--
-        عرض قسم تحليل الأسعار فقط إذا أعادت priceRows
-        محتوى غير فارغ.
-      -->
-      ${
-        prices
-          ? `<h3>أسعار الأصناف · هل صارت أغلى؟</h3>
-             ${listBox(prices)}`
-          : ''
-      }
+          ${kpi(
+            'هامش الاستثمار',
+            pct(invest.profit, invest.sales),
+            `${salesCount} عملية بيع`,
+            '↗',
+            'kpi-blue'
+          )}
 
-      <!-- جدول مقارنة الأشهر؛ النقر على الشهر يختاره -->
-      <h3>مقارنة الأشهر · اضغط على شهر لعرضه</h3>
+          ${kpi(
+            'حركة الفترة',
+            txs.length,
+            `${expenseCount} مصروف · ${salesCount} بيع`,
+            '⌁',
+            'kpi-purple'
+          )}
+        </section>
 
-      <div class="list tblw">
-        <table class="tbl">
+        <section
+          class="report-section report-chart-section"
+        >
+          <div class="report-section-head">
+            <div>
+              <span class="section-kicker">
+                التدفق المالي
+              </span>
 
-          <!-- عناوين أعمدة الجدول -->
-          <tr>
-            <th>الشهر</th>
-            <th>دخل البيت</th>
-            <th>مصروف البيت</th>
-            <th>ربح الاستثمار</th>
-          </tr>
+              <h2>
+                الدخل والمصاريف والأرباح
+              </h2>
 
-          <!-- صفوف الأشهر التي تحتوي على بيانات -->
-          ${monthRows(state)}
+              <p>
+                مقارنة آخر ستة أشهر المسجلة
+              </p>
+            </div>
 
-        </table>
+            <span class="section-badge">
+              تحليل زمني
+            </span>
+          </div>
+
+          ${monthsChart(monthlySeries(state, 6))}
+        </section>
+
+        <div class="report-columns">
+
+          <section
+            id="report-home"
+            class="report-section"
+          >
+            <div class="report-section-head">
+              <div>
+                <span class="section-kicker green">
+                  قسم البيت
+                </span>
+
+                <h2>
+                  أين يذهب المال؟
+                </h2>
+
+                <p>
+                  ${
+                    topExpense
+                      ? `أعلى بند: ${esc(topExpense[0])}`
+                      : 'توزيع مصاريف البيت'
+                  }
+                </p>
+              </div>
+
+              <span class="section-icon">
+                🏡
+              </span>
+            </div>
+
+            <div class="report-mini-summary">
+              <span>
+                الدخل
+                <b class="pos">
+                  ${fmt(home.income)}
+                </b>
+              </span>
+
+              <span>
+                المصاريف
+                <b class="neg">
+                  ${fmt(home.expense)}
+                </b>
+              </span>
+            </div>
+
+            <div class="report-breakdown">
+              ${categoryRows(
+                expenseByCategory(txs, 'home'),
+                'var(--danger)'
+              )}
+            </div>
+          </section>
+
+          <section
+            id="report-invest"
+            class="report-section"
+          >
+            <div class="report-section-head">
+              <div>
+                <span class="section-kicker amber">
+                  قسم الاستثمار
+                </span>
+
+                <h2>
+                  هل الاستثمار مربح؟
+                </h2>
+
+                <p>
+                  ملخص المبيعات والتكلفة والربح
+                </p>
+              </div>
+
+              <span class="section-icon">
+                📦
+              </span>
+            </div>
+
+            <div class="report-invest-stats">
+              <div>
+                <span>المبيعات</span>
+                <b>${fmt(invest.sales)}</b>
+              </div>
+
+              <div>
+                <span>تكلفة البضاعة</span>
+                <b>${fmt(invest.cogs)}</b>
+              </div>
+
+              <div>
+                <span>المصاريف</span>
+                <b class="neg">
+                  ${fmt(invest.expenses)}
+                </b>
+              </div>
+
+              <div class="highlight">
+                <span>صافي الربح</span>
+                <b class="${tone(invest.profit)}">
+                  ${fmt(invest.profit)}
+                </b>
+              </div>
+            </div>
+
+            <div class="report-breakdown">
+              ${categoryRows(
+                expenseByCategory(txs, 'invest'),
+                'var(--warn)'
+              )}
+            </div>
+          </section>
+        </div>
+
+        <div
+          id="report-products"
+          class="report-columns"
+        >
+          <section class="report-section">
+            <div class="report-section-head">
+              <div>
+                <span class="section-kicker blue">
+                  الأداء التجاري
+                </span>
+
+                <h2>
+                  المنتجات الأكثر ربحًا
+                </h2>
+
+                <p>
+                  ترتيب المنتجات حسب صافي الربح
+                </p>
+              </div>
+
+              <span class="section-icon">
+                🏷️
+              </span>
+            </div>
+
+            <div class="report-products">
+              ${productRows(state, txs)}
+            </div>
+          </section>
+
+          <section class="report-section">
+            <div class="report-section-head">
+              <div>
+                <span class="section-kicker purple">
+                  مراقبة الأسعار
+                </span>
+
+                <h2>
+                  هل الأسعار تتغير؟
+                </h2>
+
+                <p>
+                  آخر سعر مقابل متوسط الشراء
+                </p>
+              </div>
+
+              <span class="section-icon">
+                ⌁
+              </span>
+            </div>
+
+            <div class="report-prices">
+              ${prices}
+            </div>
+          </section>
+        </div>
+
+        <section
+          class="report-section report-months"
+        >
+          <div class="report-section-head">
+            <div>
+              <span class="section-kicker">
+                المقارنة
+              </span>
+
+              <h2>
+                ملخص الأشهر
+              </h2>
+
+              <p>
+                اضغط على أي شهر لعرض تقريره
+              </p>
+            </div>
+
+            <span class="section-badge">
+              ${monthsOf(state).length} أشهر
+            </span>
+          </div>
+
+          <div
+            class="list tblw report-table-wrap"
+          >
+            <table class="tbl report-table">
+              <thead>
+                <tr>
+                  <th>الشهر</th>
+                  <th>دخل البيت</th>
+                  <th>مصروف البيت</th>
+                  <th>ربح الاستثمار</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                ${monthRows(state)}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <button
+          class="btn alt report-export-bottom"
+          data-action="export-csv"
+        >
+          ⬇️ تصدير عمليات ${esc(label)} بصيغة CSV
+        </button>
       </div>
-
-      <!-- زر تصدير عمليات الفترة إلى ملف CSV -->
-      <button
-        class="btn alt"
-        style="margin-top:16px"
-        data-action="export-csv"
-      >
-        ⬇️ تصدير عمليات ${label} (CSV)
-      </button>
     `;
   },
 };
 
-/**
- * ربط زر التصدير بإجراء تنزيل الملف.
- *
- * عند النقر:
- * 1. نجهز ملف CSV من بيانات التطبيق والفترة الحالية.
- * 2. نأخذ اسم الملف ومحتواه ونوعه.
- * 3. ننزله على جهاز المستخدم.
- */
 onClick('export-csv', () => {
-
-  // تجهيز بيانات الملف للفترة المختارة.
-  const f = csvFile(
+  const file = csvFile(
     store.state,
     currentPeriod()
   );
 
-  // تنزيل الملف باستخدام بياناته الجاهزة.
   download(
-    f.name,
-    f.content,
-    f.mime
+    file.name,
+    file.content,
+    file.mime
   );
 });

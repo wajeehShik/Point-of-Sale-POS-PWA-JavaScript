@@ -191,35 +191,52 @@
     لكن التأكيد يأتي من js/ui/actions.js والملفات المرتبطة به.
   -->
 
-<nav id="nav">
+<nav id="nav" aria-label="التنقل الرئيسي">
   <a href="#/dashboard" data-p="dashboard">
-    <i>🏠</i>الرئيسية
+    <i>⌂</i>
+    <span>الرئيسية</span>
   </a>
 
   <a href="#/home" data-p="home">
-    <i>🏡</i>البيت
+    <i>⌂</i>
+    <span>البيت</span>
   </a>
 
   <a href="#/invest" data-p="invest">
-    <i>📦</i>الاستثمار
+    <i>▣</i>
+    <span>الاستثمار</span>
   </a>
 
-  <a href="#/sales" data-p="sales">
-    <i>🛒</i>المبيعات
-  </a>
+  <details class="nav-more">
+    <summary aria-label="المزيد من الصفحات">
+      <i>•••</i>
+      <span>المزيد</span>
+    </summary>
 
-  <a href="#/expenses" data-p="expenses">
-    <i>💸</i>المصاريف
-  </a>
+    <div class="nav-menu">
+      <a href="#/sales" data-p="sales">
+        <i>🛒</i>
+        <span>المبيعات</span>
+      </a>
 
-  <a href="#/reports" data-p="reports">
-    <i>📊</i>التقارير
-  </a>
+      <a href="#/expenses" data-p="expenses">
+        <i>↘</i>
+        <span>المصاريف</span>
+      </a>
 
-  <a href="#/settings" data-p="settings">
-    <i>⚙️</i>الإعدادات
-  </a>
+      <a href="#/reports" data-p="reports">
+        <i>▤</i>
+        <span>التقارير</span>
+      </a>
+
+      <a href="#/settings" data-p="settings">
+        <i>⚙</i>
+        <span>الإعدادات</span>
+      </a>
+    </div>
+  </details>
 </nav>
+
 
 
   <div id="sheet">
@@ -454,6 +471,14 @@
     وضع السكربت في نهاية body يعني أن عناصر HTML السابقة
     تكون قد قُرئت عادةً قبل بدء تنفيذ الوحدة.
   -->
+<script>
+  document.querySelectorAll('#nav .nav-menu a').forEach(link => {
+    link.addEventListener('click', () => {
+      const menu = link.closest('.nav-more');
+      if (menu) menu.open = false;
+    });
+  });
+</script>
 
 </body>
 </html>
