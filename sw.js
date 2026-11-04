@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mali-offline-v24';
+const CACHE_NAME = 'mali-offline-v25';
 
 const APP_FILES = [
   './',
@@ -96,7 +96,7 @@ self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
 
-    // إذا تعذّر حفظ ملف أساسي، يفشل التثبيت بدل إخفاء المشكلة.
+    // نحفظ ملفات التطبيق الأساسية قبل تفعيل عامل الخدمة.
     await cache.addAll(APP_FILES.map(appUrl));
 
     await self.skipWaiting();
@@ -107,6 +107,7 @@ self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
 
+    // نحذف النسخ القديمة من الكاش.
     await Promise.all(
       keys
         .filter(key => key !== CACHE_NAME)
@@ -120,16 +121,24 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request;
 
-  // لا نتعامل مع POST أو غيره؛ نتركه للمتصفح.
+  // لا نتعامل مع طلبات غير GET.
   if (request.method !== 'GET') return;
 
   const requestUrl = new URL(request.url);
 
-  // لا نعترض طلبات مواقع أو نطاقات أخرى.
+  // لا نتدخل في طلبات النطاقات الأخرى.
   if (requestUrl.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
+      const cachedPage = await caches.match(request);
+      const cachedIndex = await caches.match(appUrl('index.html'));
+
+      // عند معرفة أن الجهاز بلا اتصال، افتح الصفحة المحفوظة فورًا.
+      if (!self.navigator.onLine && (cachedPage || cachedIndex)) {
+        return cachedPage || cachedIndex;
+      }
+
       try {
         const response = await fetch(request);
 
@@ -140,10 +149,8 @@ self.addEventListener('fetch', event => {
 
         return response;
       } catch {
-        const cachedPage = await caches.match(request);
+        // عند فشل الاتصال، اعرض الصفحة المحفوظة.
         if (cachedPage) return cachedPage;
-
-        const cachedIndex = await caches.match(appUrl('index.html'));
         if (cachedIndex) return cachedIndex;
 
         return new Response(
@@ -159,7 +166,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // للملفات مثل JavaScript وCSS والصور: الكاش أولًا.
+  // ملفات JavaScript وCSS والصور: استخدم الكاش أولًا.
   event.respondWith((async () => {
     const cached = await caches.match(request);
     if (cached) return cached;

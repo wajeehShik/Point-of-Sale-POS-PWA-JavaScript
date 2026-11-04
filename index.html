@@ -121,7 +121,18 @@
       // لمعرفة أن حدث التثبيت أصبح متاحًا.
       dispatchEvent(new Event('mali:bip'));
     });
-  </script>
+  // تسجيل عامل الخدمة مبكرًا؛ لا ننتظر تشغيل وحدات التطبيق.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('./sw.js', { scope: './' })
+        .catch(error => {
+          console.error('تعذر تسجيل Service Worker:', error);
+        });
+    });
+  }
+</script>
+
   <!--
     هذا السكربت موضوع في head حتى يبدأ الاستماع مبكرًا،
     قبل تحميل js/main.js وبقية الوحدات.
